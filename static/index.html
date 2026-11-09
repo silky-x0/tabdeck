@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="tabdeck">
 <meta name="theme-color" content="#141415">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
@@ -29,7 +33,7 @@ body{
   background:var(--bg);color:var(--text);
   font:400 14px/20px "IBM Plex Sans",system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;
-  -webkit-tap-highlight-color:transparent;user-select:none;
+  -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;
   overflow:hidden;
 }
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
@@ -37,7 +41,8 @@ body{
   -webkit-mask:var(--src) center/contain no-repeat;mask:var(--src) center/contain no-repeat}
 
 .grid{
-  height:100dvh;padding:12px;
+  height:100dvh;
+  padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
   display:grid;gap:12px;
   grid-template-columns:minmax(0,7fr) minmax(0,5fr);
   grid-template-rows:auto minmax(0,1fr) auto;
@@ -266,6 +271,9 @@ body:not([data-view=mull]) #backBtn{display:none!important}
   .mullpage,.mull-install{grid-row:auto;grid-template-columns:1fr}
   .result-text{min-height:120px}
   .talk{min-height:96px}
+  .np-top{flex:none}
+  .art{height:120px;width:120px}
+  .keys{border-radius:16px}
 }
 @media (max-height:540px){
   .grid,.col{gap:8px}
@@ -290,6 +298,13 @@ body:not([data-view=mull]) #backBtn{display:none!important}
   .sel-text{-webkit-line-clamp:2}
   .mullpage{gap:8px}
   .mull-side{gap:8px}
+}
+@media (max-width:600px){
+  header{flex-wrap:wrap;height:auto;row-gap:8px;padding:0}
+  #date,#uptime{display:none}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .keys{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .chips .chip{flex:1 0 auto}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>

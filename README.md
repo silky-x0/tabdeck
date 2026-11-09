@@ -115,6 +115,7 @@ USB is still the more reliable option, and the lower-latency one.
 | `config.toml` | Keys, display placement, and hardware overrides |
 | `~/.config/tabdeck/token` | The secret that unlocks the API, created on first run |
 | `~/.config/tabdeck/vnc/` | The display stream's password, TLS certificate and wayvnc config, created on first run |
+| `tablet phone [lan]` | Adds a listener on the Tailscale or Wi-Fi address for phones and prints a QR code to pair them |
 | `tablet install` | Writes `/etc/udev/rules.d/70-tabdeck.rules` and `~/.config/systemd/user/tabdeck.service` |
 | `tabdeck.py` | Standard-library HTTP server. It serves the page, a JSON API with stats, player and window data, the actions from your config, and the key editor |
 | `tests/` | `python3 -m unittest discover -s tests`, also run by GitHub Actions |
@@ -195,6 +196,24 @@ commands = true
 - GPU: NVIDIA through `nvidia-smi`, AMD through sysfs
 
 Override any of them under `[hardware]`. A card shows "Not available" or "No battery" when there's nothing to read.
+
+### Phone (iPhone or Android, no adb)
+
+The command center and mull page also work in a phone's browser. The extended display doesn't, since phones can't be driven over adb.
+
+**Same Wi-Fi:**
+
+```sh
+tablet phone lan
+```
+
+It serves the command center on this PC's Wi-Fi address and prints a QR code. Scan it with the phone's camera to open tabdeck with the secret already set, then use *Add to Home Screen* to keep it as an app. On iPhone that's Safari's Share menu.
+
+Traffic on Wi-Fi isn't encrypted, so someone on the same network who can capture traffic could copy the secret. The API still needs the secret, but use this mode only on a network you trust, and never on public Wi-Fi.
+
+**Anywhere, encrypted (Tailscale):** with [Tailscale](https://tailscale.com) running on the PC and the phone, `tablet phone` serves on the PC's Tailscale address instead. This mode is implemented but not yet tested on a real tailnet.
+
+The server only ever listens on loopback, Tailscale or (with `lan`) private LAN addresses, never on `0.0.0.0` or a public IP. `tablet stop` ends phone mode. Unplugging the tablet doesn't, so a phone stays connected.
 
 ## mull
 

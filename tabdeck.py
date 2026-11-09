@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import hmac
+import ipaddress
 import json
 import mimetypes
 import secrets
@@ -15,7 +16,7 @@ import threading
 import time
 import tomllib
 from http.cookies import CookieError, SimpleCookie
-from http.server import BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse, urlsplit
 
@@ -767,9 +768,44 @@ class UnixHTTPServer(socketserver.ThreadingUnixStreamServer):
     daemon_threads = True
 
 
-def serve():
+class TCPServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+
+class TCP6Server(TCPServer):
+    address_family = socket.AF_INET6
+
+
+# Phones without adb reach the server over Tailscale; nothing else may be exposed.
+TAILNETS = [ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48")]
+
+
+def listen_address(value, lan=False):
+    """Parses IP:PORT and allows only Tailscale or loopback addresses, plus private LAN ones when lan is set."""
+    host, _, port = value.rpartition(":")
+    try:
+        ip = ipaddress.ip_address(host.strip("[]"))
+        port = int(port)
+    except ValueError:
+        raise ValueError("expected --listen IP:PORT")
+    private_lan = lan and ip.is_private and not (ip.is_unspecified or ip.is_link_local or ip.is_multicast)
+    if not (ip.is_loopback or any(ip in net for net in TAILNETS) or private_lan):
+        raise ValueError(f"refusing to listen on {ip}: only Tailscale, loopback or (with --listen-lan) private LAN addresses")
+    if not 1024 <= port <= 65535:
+        raise ValueError("port must be from 1024 to 65535")
+    return str(ip), port
+
+
+def serve(listen=None):
     global TOKEN
     TOKEN = load_token()
+    if listen:
+        ip, port = listen
+        hostport = f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}"
+        HOSTS.add(hostport)
+        ORIGINS.add(f"http://{hostport}")
+        server = (TCP6Server if ":" in ip else TCPServer)((ip, port), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
     # A socket in a 0700 runtime dir: only this user (and the adb tunnel it owns) can connect.
     RUNDIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     RUNDIR.chmod(0o700)
@@ -783,5 +819,10 @@ if __name__ == "__main__":
     elif sys.argv[1:] == ["env"]:
         # Validated values for the tablet script to eval.
         print(f"MON={MONITOR} PORT={PORT} VNC_PORT={VNC_PORT}")
+    elif sys.argv[1:2] in (["--listen"], ["--listen-lan"]) and len(sys.argv) == 3:
+        try:
+            serve(listen_address(sys.argv[2], lan=sys.argv[1] == "--listen-lan"))
+        except ValueError as e:
+            sys.exit(f"tabdeck: {e}")
     else:
         serve()

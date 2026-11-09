@@ -229,6 +229,23 @@ class Mull(StateMixin, unittest.TestCase):
                     tabdeck.mull_rewrite(bad)
 
 
+class ListenAddress(unittest.TestCase):
+    def test_tailscale_and_loopback(self):
+        self.assertEqual(tabdeck.listen_address("100.97.254.108:8765"), ("100.97.254.108", 8765))
+        self.assertEqual(tabdeck.listen_address("127.0.0.1:9000"), ("127.0.0.1", 9000))
+        self.assertEqual(tabdeck.listen_address("[fd7a:115c:a1e0::1]:8765"), ("fd7a:115c:a1e0::1", 8765))
+
+    def test_lan_only_when_asked(self):
+        self.assertEqual(tabdeck.listen_address("192.168.1.19:8765", lan=True), ("192.168.1.19", 8765))
+        with self.assertRaises(ValueError):
+            tabdeck.listen_address("192.168.1.19:8765")
+
+    def test_never_wildcard_public_or_low_ports(self):
+        for bad in ["0.0.0.0:8765", "8.8.8.8:8765", "169.254.1.1:8765", "[::]:8765", "100.97.254.108:80", "junk", "1.2.3.4"]:
+            with self.assertRaises(ValueError, msg=bad):
+                tabdeck.listen_address(bad, lan=True)
+
+
 class Http(StateMixin, unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -6,6 +6,8 @@
 #        tablet install         start automatically when this tablet is plugged in (asks for sudo)
 #        tablet install wifi    start over Wi-Fi automatically at login
 #        tablet uninstall       remove both automatic starts
+#        tablet phone           serve the command center to a phone over Tailscale (shows a QR code)
+#        tablet phone lan       same, over this PC's Wi-Fi/LAN address (unencrypted; home networks only)
 set -u
 DIR="$(dirname "$(readlink -f "$0")")"
 SELF="$DIR/tablet"
@@ -21,7 +23,8 @@ env_out=$(cd "$DIR" && python3 tabdeck.py env 2>&1) && eval "$env_out" || echo "
 teardown() {
     pkill -f "^bash $SELF watch" 2>/dev/null
     pkill -x wayvnc
-    pkill -f '^python3 tabdeck.py'
+    # A tablet unplugging must not cut off a phone that is still using the command center.
+    [[ -f "$RUN/phone" ]] || pkill -f '^python3 tabdeck.py'
     hyprctl output remove "$MON" >/dev/null 2>&1
     local s
     for s in $(adb devices | awk 'NR > 1 && $2 == "device" {print $1}'); do
@@ -96,12 +99,46 @@ case "${1:-}" in
 stop)
     # Stop the services too, so the next plug-in or login can start them again.
     systemctl --user stop tabdeck.service tabdeck-wifi.service 2>/dev/null
+    rm -f "$RUN/phone"
     teardown
     echo "Stopped"
     exit 0
     ;;
 teardown)
     teardown
+    exit 0
+    ;;
+phone)
+    if [[ "${2:-}" == lan ]]; then
+        iface=$(awk '$2 == "00000000" {print $1; exit}' /proc/net/route)
+        ip=$(ip -4 -o addr show dev "$iface" 2>/dev/null | awk '{split($4, a, "/"); print a[1]; exit}')
+        [[ -n "$ip" ]] || { echo "No LAN address found"; exit 1; }
+        flag=--listen-lan
+        echo "Serving on your LAN at $ip. Traffic isn't encrypted, so use this only on a network you trust."
+    else
+        command -v tailscale >/dev/null || { echo "Install Tailscale on this PC and on the phone first: https://tailscale.com/download"; exit 1; }
+        tailscale status >/dev/null 2>&1 || { echo "Tailscale isn't running. Start it with: sudo tailscale up (or use: tablet phone lan)"; exit 1; }
+        ip=$(tailscale ip -4 | head -1)
+        [[ -n "$ip" ]] || { echo "No Tailscale address found"; exit 1; }
+        flag=--listen
+    fi
+    mkdir -p -m 700 "$RUN"
+    echo "$flag $ip:$PORT" > "$RUN/phone"
+    # Restart the server so it also listens on the phone-facing address.
+    pkill -f '^python3 tabdeck.py'
+    sleep 0.5
+    (cd "$DIR" && setsid python3 tabdeck.py "$flag" "$ip:$PORT" >server.log 2>&1 &)
+    for _ in {1..10}; do [[ -s "$CONF/token" ]] && break; sleep 0.5; done
+    sleep 1
+    pgrep -f '^python3 tabdeck.py' >/dev/null || { echo "The server didn't start:"; cat "$DIR/server.log"; exit 1; }
+    url="http://$ip:$PORT/?t=$(cat "$CONF/token")"
+    [[ "$flag" == --listen ]] && echo "On the phone: connect to Tailscale, then scan this with the camera." \
+        || echo "On the phone: join the same Wi-Fi as this PC, then scan this with the camera."
+    echo
+    if command -v qrencode >/dev/null; then qrencode -t ansiutf8 -m 2 "$url"; else echo "(install qrencode to show a QR code)"; fi
+    echo "Or open: $url"
+    echo "The link contains the secret that unlocks tabdeck. Don't share it."
+    echo "In Safari, use Share > Add to Home Screen to keep it as an app."
     exit 0
     ;;
 pair)
@@ -182,7 +219,7 @@ wifi)
     ANDROID_SERIAL=$(adb -d get-serialno)
     ;;
 *)
-    sed -n '2,8p' "$SELF" | sed 's/^# \{0,1\}//'
+    sed -n '2,10p' "$SELF" | sed 's/^# \{0,1\}//'
     exit 1
     ;;
 esac
@@ -197,7 +234,9 @@ mkdir -p -m 700 "$RUN"
 vnc_setup
 # wayvnc leaves its socket behind when killed and then refuses to bind, so clear it first.
 pgrep -x wayvnc >/dev/null || { rm -f "$RUN/vnc.sock"; setsid wayvnc -C "$VNC/config" -u -o "$MON" "$RUN/vnc.sock" >/dev/null 2>&1 & }
-pgrep -f '^python3 tabdeck.py' >/dev/null || (cd "$DIR" && setsid python3 tabdeck.py >server.log 2>&1 &)
+listen=()
+[[ -s "$RUN/phone" ]] && read -ra listen < "$RUN/phone"
+pgrep -f '^python3 tabdeck.py' >/dev/null || (cd "$DIR" && setsid python3 tabdeck.py "${listen[@]}" >server.log 2>&1 &)
 sleep 1
 
 tunnel "$ANDROID_SERIAL" || { echo "Could not set up the tunnel to the tablet"; exit 1; }
