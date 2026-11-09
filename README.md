@@ -1,6 +1,6 @@
 # tabdeck
 
-Turn an Android tablet into a second monitor and a touch command center for a Hyprland desktop, over a USB cable.
+Turn an Android tablet into a second monitor and a touch command center for a Hyprland desktop, over USB or Wi-Fi.
 
 ![tabdeck on a Samsung Galaxy Tab A9: the key page follows the focused app, with live stats, now playing and the window list](docs/demo.gif)
 
@@ -25,7 +25,7 @@ Everything runs on your own PC and reaches the tablet through `adb reverse`. The
 - `python3` (standard library only)
 - `adb`, `wayvnc`
 - `wpctl` (PipeWire), `playerctl`
-- Optional: `wtype` (shortcut keys), `nvidia-smi` (NVIDIA stats), `awww` or `swww` (wallpaper copy), and whatever apps your keys launch. The default keys use `kitty`, `firefox`, `rofi` (HyDE's themed launcher when installed) and `hyprshot`
+- Optional: `qrencode` (Wi-Fi pairing), `wtype` (shortcut keys), `nvidia-smi` (NVIDIA stats), `awww` or `swww` (wallpaper copy), and whatever apps your keys launch. The default keys use `kitty`, `firefox`, `rofi` (HyDE's themed launcher when installed) and `hyprshot`
 
 **Tablet**
 - Android with USB debugging enabled
@@ -56,6 +56,24 @@ This needs the tablet plugged in, and asks for sudo once. It installs:
 - a systemd user service that runs `tablet` when the tablet is plugged in and tears everything down when it's unplugged
 
 The service also starts at login if the tablet is already connected. To remove both, run `tablet uninstall`. Logs are in `journalctl --user -u tabdeck`.
+
+### Wi-Fi
+
+Pair once by scanning a QR code. The tablet and PC must be on the same network:
+
+```sh
+tablet pair
+```
+
+On the tablet, open Developer options > Wireless debugging > *Pair device with QR code* and scan the code shown in the terminal. After that:
+
+```sh
+tablet wifi
+```
+
+A background watcher checks the connection every 5 seconds. When the tablet drops off and comes back, even on a new port, it reconnects and restores the tunnels. If AVNC shows "Disconnected" afterwards, tap its retry button.
+
+Android turns Wireless debugging off by itself after some network changes, and the watcher can't turn it back on. When that happens, switch it back on in Developer options. USB is still the more reliable option, and the lower-latency one.
 
 ## How it works
 
@@ -149,7 +167,7 @@ What's not protected: apps installed on the tablet can reach its localhost like 
 ## Limitations
 
 - Hyprland only. Sway, KDE and GNOME aren't supported.
-- USB only. Wireless adb works in principle but proved unreliable in testing.
+- Wi-Fi depends on Android keeping Wireless debugging on, and has more display lag than USB.
 - Intel GPUs don't report utilization, so the Graphics card shows "Not available".
 - The display runs at a fixed 60 Hz, and the virtual monitor is always named `TAB`.
 

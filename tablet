@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Usage: tablet             start extended display + command center over USB
+#        tablet wifi        start over Wi-Fi (pair once with: tablet pair)
+#        tablet pair        pair the tablet for Wi-Fi by scanning a QR code
 #        tablet stop        tear it all down
 #        tablet install     start automatically when this tablet is plugged in (asks for sudo)
 #        tablet uninstall   remove the automatic start
@@ -11,10 +13,30 @@ RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/tabdeck"
 RULE=/etc/udev/rules.d/70-tabdeck.rules
 
 teardown() {
+    pkill -f "^bash $SELF watch" 2>/dev/null
     pkill -x wayvnc
     pkill -f '^python3 tabdeck.py'
     hyprctl output remove TAB >/dev/null 2>&1
-    adb reverse --remove-all 2>/dev/null
+    local s
+    for s in $(adb devices | awk 'NR > 1 && $2 == "device" {print $1}'); do
+        adb -s "$s" reverse --remove-all 2>/dev/null
+    done
+    rm -f "$RUN/serial"
+}
+
+tunnel() {
+    adb -s "$1" reverse tcp:5900 "localfilesystem:$RUN/vnc.sock" >/dev/null &&
+        adb -s "$1" reverse tcp:8765 "localfilesystem:$RUN/http.sock" >/dev/null
+}
+
+# Paired tablets advertise themselves over mDNS; stale entries linger, so try each until one connects.
+wifi_connect() {
+    local addr
+    for addr in $(adb mdns services | awk '/_adb-tls-connect/ {print $NF}' | sort -u); do
+        timeout 5 adb connect "$addr" 2>/dev/null | grep -q '^connected\|already connected' &&
+            [[ "$(adb -s "$addr" get-state 2>/dev/null)" == device ]] && { echo "$addr"; return 0; }
+    done
+    return 1
 }
 
 case "${1:-}" in
@@ -28,6 +50,39 @@ stop)
 teardown)
     teardown
     exit 0
+    ;;
+pair)
+    command -v qrencode >/dev/null || { echo "Install qrencode first (pacman -S qrencode)"; exit 1; }
+    name="tabdeck-$(tr -dc a-z0-9 </dev/urandom | head -c 8)"
+    pass=$(tr -dc 0-9 </dev/urandom | head -c 8)
+    echo "On the tablet: Developer options > Wireless debugging > Pair device with QR code, and scan this:"
+    echo
+    qrencode -t ansiutf8 -m 2 "WIFI:T:ADB;S:$name;P:$pass;;"
+    echo "Waiting for the scan (2 minutes)..."
+    for _ in {1..120}; do
+        # After scanning, the tablet advertises a pairing service under the name from the QR code.
+        addr=$(adb mdns services | awk -v n="$name" '$1 == n && /_adb-tls-pairing/ {print $NF; exit}')
+        if [[ -n "$addr" ]]; then
+            adb pair "$addr" "$pass" | grep -q 'Successfully paired' || { echo "Pairing failed"; exit 1; }
+            echo "Paired. Connecting..."
+            for _ in {1..10}; do addr=$(wifi_connect) && break; sleep 2; done
+            [[ -n "$addr" ]] && echo "Connected to $addr. Start with: tablet wifi" || echo "Paired, but couldn't connect yet. Try: tablet wifi"
+            exit 0
+        fi
+        sleep 1
+    done
+    echo "No scan detected. Is the tablet on the same Wi-Fi network as this PC?"
+    exit 1
+    ;;
+watch)
+    # Runs in the background in Wi-Fi mode: reconnect when the tablet drops, then restore the tunnels.
+    while sleep 5; do
+        serial=$(cat "$RUN/serial" 2>/dev/null) || exit 0
+        [[ "$(adb -s "$serial" get-state 2>/dev/null)" == device ]] &&
+            adb -s "$serial" reverse --list 2>/dev/null | grep -q 8765 && continue
+        new=$(wifi_connect) || continue
+        tunnel "$new" && echo "$new" > "$RUN/serial"
+    done
     ;;
 install)
     serial=$(timeout 5 adb -d get-serialno 2>/dev/null)
@@ -65,26 +120,39 @@ uninstall)
     echo "Uninstalled"
     exit 0
     ;;
+wifi)
+    echo "Looking for the tablet on Wi-Fi..."
+    ANDROID_SERIAL=$(wifi_connect) || { echo "Not found. Turn on Wireless debugging on the tablet, or pair first with: tablet pair"; exit 1; }
+    ;;
+"")
+    echo "Waiting for tablet on USB (plug it in, allow USB debugging)..."
+    timeout 60 adb wait-for-usb-device || { echo "No tablet found"; exit 1; }
+    ANDROID_SERIAL=$(adb -d get-serialno)
+    ;;
+*)
+    sed -n '2,7p' "$SELF" | sed 's/^# \{0,1\}//'
+    exit 1
+    ;;
 esac
-
-echo "Waiting for tablet on USB (plug it in, allow USB debugging)..."
-timeout 60 adb wait-for-usb-device || { echo "No tablet found"; exit 1; }
+export ANDROID_SERIAL
 
 for _ in {1..30}; do hyprctl monitors >/dev/null 2>&1 && break; sleep 1; done
-
-export ANDROID_SERIAL
-ANDROID_SERIAL=$(adb -d get-serialno)
 
 (cd "$DIR" && python3 tabdeck.py setup-display) || exit 1
 
 # Both servers listen on sockets in a 0700 dir, so only this user and its adb tunnel can reach them.
 mkdir -p -m 700 "$RUN"
-pgrep -x wayvnc >/dev/null || setsid wayvnc -u -o TAB "$RUN/vnc.sock" >/dev/null 2>&1 &
+# wayvnc leaves its socket behind when killed and then refuses to bind, so clear it first.
+pgrep -x wayvnc >/dev/null || { rm -f "$RUN/vnc.sock"; setsid wayvnc -u -o TAB "$RUN/vnc.sock" >/dev/null 2>&1 & }
 pgrep -f '^python3 tabdeck.py' >/dev/null || (cd "$DIR" && setsid python3 tabdeck.py >server.log 2>&1 &)
 sleep 1
 
-adb reverse tcp:5900 "localfilesystem:$RUN/vnc.sock" >/dev/null
-adb reverse tcp:8765 "localfilesystem:$RUN/http.sock" >/dev/null
+tunnel "$ANDROID_SERIAL" || { echo "Could not set up the tunnel to the tablet"; exit 1; }
 adb shell am start -a android.intent.action.VIEW -d 'vnc://127.0.0.1:5900' com.gaurav.avnc >/dev/null 2>&1
+
+if [[ "${1:-}" == wifi ]]; then
+    echo "$ANDROID_SERIAL" > "$RUN/serial"
+    pgrep -f "^bash $SELF watch" >/dev/null || setsid bash "$SELF" watch >/dev/null 2>&1 &
+fi
 
 echo "Ready. Display is in AVNC, command center at http://127.0.0.1:8765"
