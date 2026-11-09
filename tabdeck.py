@@ -36,17 +36,39 @@ def read(path, default=""):
 
 # --- config ---
 
+MODS = {"ctrl": "ctrl", "shift": "shift", "alt": "alt", "super": "logo", "logo": "logo"}
+SHORTCUT = re.compile(r"((ctrl|shift|alt|super|logo)\+)*[A-Za-z0-9_]+", re.I)
+
+
+def shortcut_cmd(spec):
+    *mods, key = spec.split("+")
+    mods = [MODS[m.lower()] for m in mods]
+    cmd = ["wtype"]
+    for m in mods:
+        cmd += ["-M", m]
+    cmd += ["-k", key]
+    for m in reversed(mods):
+        cmd += ["-m", m]
+    return cmd
+
+
 def load_config():
     user = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "tabdeck" / "config.toml"
     path = user if user.is_file() else ROOT / "config.toml"
     with open(path, "rb") as f:
         cfg = tomllib.load(f)
-    for i, k in enumerate(cfg.get("keys", [])):
-        if "workspace" in k:
-            if not isinstance(k["workspace"], int):
-                sys.exit(f"{path}: keys[{i}].workspace must be a number")
-        elif not isinstance(k.get("command"), (str, list)) or not k.get("label"):
-            sys.exit(f"{path}: keys[{i}] needs either workspace, or label and command")
+    lists = {"keys": cfg.get("keys", [])}
+    lists.update({f"apps.{a}.keys": v.get("keys", []) for a, v in cfg.get("apps", {}).items()})
+    for where, keys in lists.items():
+        for i, k in enumerate(keys):
+            if "workspace" in k:
+                if not isinstance(k["workspace"], int):
+                    sys.exit(f"{path}: {where}[{i}].workspace must be a number")
+            elif "shortcut" in k:
+                if not SHORTCUT.fullmatch(str(k["shortcut"])) or not k.get("label"):
+                    sys.exit(f"{path}: {where}[{i}] needs a label and a shortcut like \"ctrl+shift+t\"")
+            elif not isinstance(k.get("command"), (str, list)) or not k.get("label"):
+                sys.exit(f"{path}: {where}[{i}] needs workspace, or label with command or shortcut")
     return cfg
 
 
@@ -88,16 +110,29 @@ ACTIONS = {
     "play": ["playerctl", "play-pause"],
     "next": ["playerctl", "next"],
 }
-KEYS = []
-for i, k in enumerate(CFG.get("keys", [])):
-    kid = f"k{i}"
-    if "workspace" in k:
-        ACTIONS[kid] = workspace_cmd(k["workspace"])
-        KEYS.append({"id": kid, "ws": k["workspace"]})
-    else:
-        c = k["command"]
-        ACTIONS[kid] = ["sh", "-c", c] if isinstance(c, str) else c
-        KEYS.append({"id": kid, "label": k["label"], "icon": k.get("icon")})
+def build_keys(keys, prefix):
+    out = []
+    for i, k in enumerate(keys):
+        kid = f"{prefix}{i}"
+        if "workspace" in k:
+            ACTIONS[kid] = workspace_cmd(k["workspace"])
+            out.append({"id": kid, "ws": k["workspace"]})
+            continue
+        if "shortcut" in k:
+            ACTIONS[kid] = shortcut_cmd(k["shortcut"])
+        else:
+            c = k["command"]
+            ACTIONS[kid] = ["sh", "-c", c] if isinstance(c, str) else c
+        out.append({"id": kid, "label": k["label"], "icon": k.get("icon")})
+    return out
+
+
+# Workspace keys stay on every page; an app page swaps out the other default keys.
+KEYS = {
+    "default": build_keys(CFG.get("keys", []), "k"),
+    "apps": {name.lower(): build_keys(app.get("keys", []), f"a{j}k")
+             for j, (name, app) in enumerate(CFG.get("apps", {}).items())},
+}
 
 
 # --- hardware detection ---
@@ -258,13 +293,14 @@ def windows():
         active = json.loads(run(["hyprctl", "activewindow", "-j"]) or "{}").get("address")
         monitors = json.loads(run(["hyprctl", "monitors", "-j"]) or "[]")
     except json.JSONDecodeError:
-        return {"windows": [], "workspaces": []}
+        return {"windows": [], "workspaces": [], "activeClass": None}
     wins = sorted(
         ({"address": c["address"], "class": c["class"], "title": c["title"],
           "workspace": c["workspace"]["id"], "active": c["address"] == active}
          for c in clients if c.get("mapped", True) and c["workspace"]["id"] > 0),
         key=lambda w: (w["workspace"], w["class"]))
-    return {"windows": wins, "workspaces": [m["activeWorkspace"]["id"] for m in monitors]}
+    active_class = next((w["class"] for w in wins if w["active"]), None)
+    return {"windows": wins, "workspaces": [m["activeWorkspace"]["id"] for m in monitors], "activeClass": active_class}
 
 
 # --- virtual display setup, used by the tablet script ---

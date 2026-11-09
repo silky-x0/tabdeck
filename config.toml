@@ -21,8 +21,10 @@ battery = "auto"
 cpu_sensor = "auto"
 gpu = "auto"
 
-# Keys are shown 6 per row, in order.
-# A key is either a workspace switch, or a command with a label and an icon.
+# Keys are shown 6 per row, in order. A key is one of:
+#   a workspace switch:  workspace = 1
+#   a command:           label, icon, command
+#   a shortcut sent to the focused window (needs wtype):  label, icon, shortcut = "ctrl+shift+t"
 # Icons are file names from static/icons (Lucide). Add any Lucide SVG there to use it.
 # A command is a string (run with sh -c) or a list (run directly, no shell).
 
@@ -69,3 +71,56 @@ command = ["hyprshot", "-m", "region"]
 label = "Lock"
 icon = "lock"
 command = ["loginctl", "lock-session"]
+
+# Per-app pages. When a window with this class is focused, its keys replace the
+# default command keys; workspace keys stay. Find a class with: hyprctl activewindow
+
+[[apps.kitty.keys]]
+label = "New tab"
+icon = "plus"
+shortcut = "ctrl+shift+t"
+[[apps.kitty.keys]]
+label = "Close tab"
+icon = "x"
+shortcut = "ctrl+shift+q"
+[[apps.kitty.keys]]
+label = "Prev tab"
+icon = "chevron-left"
+shortcut = "ctrl+shift+Left"
+[[apps.kitty.keys]]
+label = "Next tab"
+icon = "chevron-right"
+shortcut = "ctrl+shift+Right"
+[[apps.kitty.keys]]
+label = "Copy"
+icon = "copy"
+shortcut = "ctrl+shift+c"
+[[apps.kitty.keys]]
+label = "Paste"
+icon = "clipboard-paste"
+shortcut = "ctrl+shift+v"
+
+[[apps.firefox.keys]]
+label = "Back"
+icon = "arrow-left"
+shortcut = "alt+Left"
+[[apps.firefox.keys]]
+label = "Forward"
+icon = "arrow-right"
+shortcut = "alt+Right"
+[[apps.firefox.keys]]
+label = "Reload"
+icon = "rotate-cw"
+shortcut = "F5"
+[[apps.firefox.keys]]
+label = "New tab"
+icon = "plus"
+shortcut = "ctrl+t"
+[[apps.firefox.keys]]
+label = "Close tab"
+icon = "x"
+shortcut = "ctrl+w"
+[[apps.firefox.keys]]
+label = "Reopen"
+icon = "undo-2"
+shortcut = "ctrl+shift+t"

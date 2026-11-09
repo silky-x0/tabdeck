@@ -10,7 +10,7 @@ Turn an Android tablet into a second monitor and a touch command center for a Hy
   - memory, GPU, battery and network stats
   - now playing with album art, transport and volume controls
   - workspace keys with live indicators
-  - app launcher keys
+  - app launcher keys, and per-app key pages that follow the focused window
   - a window list where you can tap to focus a window or close it
 
 Everything runs on your own PC and reaches the tablet through `adb reverse`. There's no cloud, no account and no app store install.
@@ -24,7 +24,7 @@ Everything runs on your own PC and reaches the tablet through `adb reverse`. The
 - `python3` (standard library only)
 - `adb`, `wayvnc`
 - `wpctl` (PipeWire), `playerctl`
-- Optional: `nvidia-smi` (NVIDIA stats), `awww` or `swww` (wallpaper copy), and whatever apps your keys launch. The default keys use `kitty`, `firefox`, `rofi` (HyDE's themed launcher when installed) and `hyprshot`
+- Optional: `wtype` (shortcut keys), `nvidia-smi` (NVIDIA stats), `awww` or `swww` (wallpaper copy), and whatever apps your keys launch. The default keys use `kitty`, `firefox`, `rofi` (HyDE's themed launcher when installed) and `hyprshot`
 
 **Tablet**
 - Android with USB debugging enabled
@@ -94,7 +94,27 @@ icon = "scan"
 command = ["hyprshot", "-m", "region"]   # a list runs directly, no shell
 ```
 
+A key can also send a keyboard shortcut to the focused window. This needs `wtype`:
+
+```toml
+[[keys]]
+label = "New tab"
+icon = "plus"
+shortcut = "ctrl+shift+t"     # modifiers: ctrl, shift, alt, super; keys use XKB names like Left, F5, Return
+```
+
 To use another icon, drop any [Lucide](https://lucide.dev) SVG into `static/icons/`.
+
+**Per-app pages.** When a window of a given class is focused, its page replaces the default command keys, and workspace keys stay. The header shows which page is active. The default config ships pages for `kitty` and `firefox`:
+
+```toml
+[[apps.firefox.keys]]
+label = "Back"
+icon = "arrow-left"
+shortcut = "alt+Left"
+```
+
+To find a window's class, run `hyprctl activewindow` and look at `class`.
 
 **Display.** The resolution is read from the tablet over adb, and the monitor goes right of your other screens by default. Override with `display.resolution`, `display.position` (any Hyprland position, like `auto-left` or `2646x0`) and `display.scale`.
 
@@ -128,7 +148,8 @@ VNC sends a single pointer, so touch on the display works as mouse input. Multi-
 
 ## Roadmap
 
-- Per-app key pages that follow the focused window
+- Edit keys from the tablet instead of the config file
+- AUR package
 
 ## Credits
 

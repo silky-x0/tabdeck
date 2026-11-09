@@ -50,6 +50,8 @@ body{
 header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:4px 4px 0;height:36px}
 .host{display:flex;align-items:baseline;gap:12px}
 .host b{font-weight:500;font-size:16px}
+.page{color:var(--accent)}
+.page:empty{display:none}
 .clock{display:flex;align-items:center;gap:16px}
 .clock .time{font-size:20px;font-weight:500}
 .link{display:flex;align-items:center;gap:8px}
@@ -171,7 +173,7 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 <body>
 <div class="grid">
   <header>
-    <div class="host"><b id="host">—</b><span class="meta" id="uptime"></span></div>
+    <div class="host"><b id="host">—</b><span class="meta" id="uptime"></span><span class="meta page" id="page"></span></div>
     <div class="clock">
       <div class="link" id="link"><span class="dot"></span><span class="meta" id="linkText">Linked</span></div>
       <span class="meta" id="date"></span>
@@ -243,8 +245,17 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 
 <script>
 const $ = id => document.getElementById(id);
+let keyConfig = {default: [], apps: {}}, keyPage;
 async function loadKeys() {
-  const keys = await fetch("/api/keys").then(r => r.json()).catch(() => []);
+  keyConfig = await fetch("/api/keys").then(r => r.json()).catch(() => keyConfig);
+  showPage(null);
+}
+function showPage(page) {
+  if (page === keyPage) return;
+  keyPage = page;
+  const base = keyConfig.default;
+  const keys = page ? [...base.filter(k => k.ws != null), ...keyConfig.apps[page]] : base;
+  $("page").textContent = page ? `${page} keys` : "";
   const el = $("keys");
   el.style.setProperty("--rows", Math.max(1, Math.ceil(keys.length / 6)));
   el.replaceChildren(...keys.map(k => {
@@ -356,6 +367,8 @@ function progress() {
 }
 
 function renderWindows(w) {
+  const cls = (w.activeClass || "").toLowerCase();
+  showPage(keyConfig.apps[cls] ? cls : null);
   $("winCount").textContent = w.windows.length;
   const counts = {};
   w.windows.forEach(x => counts[x.workspace] = (counts[x.workspace] || 0) + 1);
