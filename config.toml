@@ -1,0 +1,71 @@
+# tabdeck configuration.
+# Copy to ~/.config/tabdeck/config.toml to customize; that file replaces this one entirely.
+
+# "auto" picks "lua" when ~/.config/hypr/hyprland.lua exists, otherwise "classic".
+hyprland = "auto"
+
+[display]
+# Resolution of the virtual monitor. "auto" reads it from the tablet over adb.
+resolution = "auto"
+# Any Hyprland monitor position: "auto-right", "auto-left", or "2646x0".
+position = "auto-right"
+scale = 1
+# Copy the wallpaper from your first monitor (needs awww or swww).
+wallpaper = true
+
+[hardware]
+# Each one is "auto" or a fixed value, like net = "wlan0", battery = "BAT1",
+# cpu_sensor = "coretemp", gpu = "nvidia" | "amd" | "none".
+net = "auto"
+battery = "auto"
+cpu_sensor = "auto"
+gpu = "auto"
+
+# Keys are shown 6 per row, in order.
+# A key is either a workspace switch, or a command with a label and an icon.
+# Icons are file names from static/icons (Lucide). Add any Lucide SVG there to use it.
+# A command is a string (run with sh -c) or a list (run directly, no shell).
+
+[[keys]]
+workspace = 1
+[[keys]]
+workspace = 2
+[[keys]]
+workspace = 3
+[[keys]]
+workspace = 4
+[[keys]]
+workspace = 5
+[[keys]]
+workspace = 6
+
+[[keys]]
+label = "Terminal"
+icon = "terminal"
+command = "kitty"
+
+[[keys]]
+label = "Firefox"
+icon = "globe"
+command = "firefox"
+
+[[keys]]
+label = "Files"
+icon = "folder"
+command = "xdg-open ~"
+
+[[keys]]
+label = "Apps"
+icon = "layout-grid"
+# Tapping again closes the launcher. Uses HyDE's themed launcher when available.
+command = "pkill -x rofi || { command -v hyde-shell >/dev/null && exec hyde-shell rofilaunch d; } || exec rofi -show drun"
+
+[[keys]]
+label = "Capture"
+icon = "scan"
+command = ["hyprshot", "-m", "region"]
+
+[[keys]]
+label = "Lock"
+icon = "lock"
+command = ["loginctl", "lock-session"]

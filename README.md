@@ -15,16 +15,16 @@ Turn an Android tablet into a second monitor and a touch command center for a Hy
 
 Everything runs on your own PC and reaches the tablet through `adb reverse`. There's no cloud, no account and no app store install.
 
-> **Status: early.** It's built for and tested on a single setup: Arch, Hyprland with the Lua config, HyDE, an NVIDIA laptop GPU and a Samsung Galaxy Tab A9. Several values are still hardcoded, as listed under [Limitations](#limitations).
+> **Status: early.** It's tested on one setup: Arch, Hyprland with the Lua config, HyDE, an NVIDIA laptop GPU and a Samsung Galaxy Tab A9. Hardware is auto-detected, and keys and apps live in a config file. Classic Hyprland configs and AMD GPUs are supported in code but not yet tested on real machines.
 
 ## Requirements
 
 **PC**
-- Hyprland using the Lua config (`hyprctl eval`)
+- Hyprland, with either the Lua config or the classic `hyprland.conf`
 - `python3` (standard library only)
 - `adb`, `wayvnc`
 - `wpctl` (PipeWire), `playerctl`
-- Optional: `nvidia-smi`, `awww` (wallpaper), HyDE (`hyde-shell`), `hyprshot`, `kitty`, `firefox`, `dolphin`, `rofi`
+- Optional: `nvidia-smi` (NVIDIA stats), `awww` or `swww` (wallpaper copy), and whatever apps your keys launch. The default keys use `kitty`, `firefox`, `rofi` (HyDE's themed launcher when installed) and `hyprshot`
 
 **Tablet**
 - Android with USB debugging enabled
@@ -48,9 +48,50 @@ Every time after that, plug in the tablet, run `tablet` and open the app. To tea
 
 | Piece | What it does |
 | --- | --- |
-| `tablet` | Creates a headless Hyprland output, starts `wayvnc` on it, starts the server and sets up `adb reverse` for ports 5900 and 8765 |
+| `tablet` | Creates a headless Hyprland output sized to the tablet, starts `wayvnc` on it, starts the server and sets up `adb reverse` for ports 5900 and 8765 |
+| `config.toml` | Keys, display placement, and hardware overrides |
 | `tabdeck.py` | Standard-library HTTP server. It serves the page, a JSON API with stats, player and window data, and a fixed list of actions |
 | `static/` | The command center page, its fonts, icons and web app manifest |
+
+## Configuration
+
+Copy the default config and edit it:
+
+```sh
+mkdir -p ~/.config/tabdeck
+cp ~/tabdeck/config.toml ~/.config/tabdeck/config.toml
+```
+
+Your copy replaces the default entirely. Restart with `tablet stop && tablet` after changes.
+
+**Keys** are shown 6 per row, in order. Each key is either a workspace switch or a command:
+
+```toml
+[[keys]]
+workspace = 1
+
+[[keys]]
+label = "Terminal"
+icon = "terminal"            # a file name from static/icons (Lucide)
+command = "kitty"            # a string runs with sh -c
+
+[[keys]]
+label = "Capture"
+icon = "scan"
+command = ["hyprshot", "-m", "region"]   # a list runs directly, no shell
+```
+
+To use another icon, drop any [Lucide](https://lucide.dev) SVG into `static/icons/`.
+
+**Display.** The resolution is read from the tablet over adb, and the monitor goes right of your other screens by default. Override with `display.resolution`, `display.position` (any Hyprland position, like `auto-left` or `2646x0`) and `display.scale`.
+
+**Hardware** is auto-detected:
+- network: the interface on the default route
+- battery: the first `power_supply` of type Battery
+- CPU temperature: `k10temp`, `zenpower`, `coretemp`, `cpu_thermal` or `acpitz`
+- GPU: NVIDIA through `nvidia-smi`, AMD through sysfs
+
+Override any of them under `[hardware]`. A card shows "Not available" or "No battery" when there's nothing to read.
 
 ## Security
 
@@ -65,23 +106,21 @@ Don't bind it to `0.0.0.0` without adding authentication.
 
 ## Limitations
 
-Hardcoded for now. Making these configurable is the plan for v1:
-
-- GPU PCI path `0000:01:00.0` and `nvidia-smi`
-- the `wlan0` network interface, `BAT1` battery and `k10temp` CPU sensor
-- virtual monitor size `1340x800` and position `2646x0`
-- the wallpaper copied from `eDP-1` with `awww`
-- launcher apps: `kitty`, `firefox`, `dolphin`, and `hyde-shell rofilaunch`
-- only the Lua `hyprctl eval` syntax, not classic `hyprctl dispatch`
+- Hyprland only. Sway, KDE and GNOME aren't supported.
+- USB only. Wireless adb works in principle but proved unreliable in testing.
+- Intel GPUs don't report utilization, so the Graphics card shows "Not available".
+- The display runs at a fixed 60 Hz, and the virtual monitor is always named `TAB`.
 
 VNC sends a single pointer, so touch on the display works as mouse input. Multi-touch gestures don't reach Linux apps.
 
 ## Roadmap
 
-- Config file for keys, apps and hardware, with auto-detection
-- Classic Hyprland config support
 - Start automatically when the tablet is plugged in (udev + systemd user service)
 - Per-app key pages that follow the focused window
+
+## Credits
+
+Built by Akhilesh Tiwari ([@silky-x0](https://github.com/silky-x0)) together with Claude, Anthropic's AI model, in Claude Code.
 
 ## License
 

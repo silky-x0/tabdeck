@@ -106,7 +106,7 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 
 /* Keys */
 .keys{grid-column:1/8;grid-row:4;padding:12px;border-radius:20px;
-  display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:8px}
+  display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(var(--rows,2),minmax(0,1fr));gap:8px}
 .key{position:relative;border:1px solid var(--line);border-radius:8px;background:var(--raised);color:var(--text);
   font:inherit;text-align:left;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 -3px 0 rgba(0,0,0,.35);
@@ -243,20 +243,27 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 
 <script>
 const $ = id => document.getElementById(id);
-const KEYS = [
-  ...[1,2,3,4,5,6].map(n => ({id:`ws${n}`, ws:n})),
-  {id:"term", icon:"terminal", cap:"Terminal"},
-  {id:"web", icon:"globe", cap:"Firefox"},
-  {id:"files", icon:"folder", cap:"Files"},
-  {id:"launcher", icon:"layout-grid", cap:"Apps"},
-  {id:"shot", icon:"scan", cap:"Capture"},
-  {id:"lock", icon:"lock", cap:"Lock"},
-];
-
-$("keys").innerHTML = KEYS.map(k => k.ws
-  ? `<button class="key" data-run="${k.id}" data-ws="${k.ws}"><span class="n num">${k.ws}</span><span class="cap num" data-count></span><span class="led"></span></button>`
-  : `<button class="key" data-run="${k.id}"><span class="i" style="--src:url(icons/${k.icon}.svg)"></span><span class="cap">${k.cap}</span></button>`
-).join("");
+async function loadKeys() {
+  const keys = await fetch("/api/keys").then(r => r.json()).catch(() => []);
+  const el = $("keys");
+  el.style.setProperty("--rows", Math.max(1, Math.ceil(keys.length / 6)));
+  el.replaceChildren(...keys.map(k => {
+    const b = document.createElement("button");
+    b.className = "key";
+    b.dataset.run = k.id;
+    if (k.ws != null) {
+      b.dataset.ws = k.ws;
+      b.innerHTML = `<span class="n num"></span><span class="cap num" data-count></span><span class="led"></span>`;
+      b.firstChild.textContent = k.ws;
+    } else {
+      b.innerHTML = `<span class="i"></span><span class="cap"></span>`;
+      if (k.icon) b.firstChild.style.setProperty("--src", `url(icons/${encodeURIComponent(k.icon)}.svg)`);
+      else b.firstChild.style.visibility = "hidden";
+      b.lastChild.textContent = k.label;
+    }
+    return b;
+  }));
+}
 
 async function post(url, el) {
   const r = await fetch(url, {method:"POST"}).catch(() => null);
@@ -307,11 +314,14 @@ function renderStats(s) {
   $("mem").innerHTML = `${gb(s.memUsed)}<small>GB</small>`;
   $("memSub").textContent = `of ${gb(s.memTotal)} GB`;
   const g = s.gpu;
-  if (!g) { $("gpu").textContent = "—"; $("gpuSub").textContent = "No reading"; }
-  else if (g.asleep) { $("gpu").textContent = "Asleep"; $("gpuSub").textContent = "RTX 3050 powered down"; }
-  else { $("gpu").innerHTML = `${g.util}<small>%</small>`; $("gpuSub").textContent = `${g.temp}°C · ${(g.memUsed / 1024).toFixed(1)} GB`; }
-  $("bat").innerHTML = `${s.battery.level}<small>%</small>`;
-  $("batSub").textContent = s.battery.status === "Not charging" ? "Plugged in" : s.battery.status;
+  if (!g) { $("gpu").textContent = "—"; $("gpuSub").textContent = "Not available"; }
+  else if (g.asleep) { $("gpu").textContent = "Asleep"; $("gpuSub").textContent = g.name; }
+  else { $("gpu").innerHTML = `${g.util}<small>%</small>`; $("gpuSub").textContent = `${g.temp != null ? `${g.temp}°C · ` : ""}${(g.memUsed / 1024).toFixed(1)} GB`; }
+  if (!s.battery) { $("bat").textContent = "—"; $("batSub").textContent = "No battery"; }
+  else {
+    $("bat").innerHTML = `${s.battery.level}<small>%</small>`;
+    $("batSub").textContent = s.battery.status === "Not charging" ? "Plugged in" : s.battery.status;
+  }
   $("down").innerHTML = rate(s.net.down).replace(" ", "<small>") + "</small>";
   $("up").textContent = `Up ${rate(s.net.up)}`;
 }
@@ -391,7 +401,7 @@ document.addEventListener("pointerup", () => {
 }, {once: true});
 
 tick(); setInterval(tick, 1000);
-pollAll(); setInterval(pollAll, 1500);
+loadKeys().then(pollAll); setInterval(pollAll, 1500);
 setInterval(progress, 1000);
 </script>
 </body>
