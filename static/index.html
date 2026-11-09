@@ -37,7 +37,7 @@ body{
   height:100dvh;padding:12px;
   display:grid;gap:12px;
   grid-template-columns:minmax(0,7fr) minmax(0,5fr);
-  grid-template-rows:auto auto minmax(0,1fr);
+  grid-template-rows:auto minmax(0,1fr) auto;
   animation:enter .4s var(--ease) both;
 }
 @keyframes enter{from{opacity:0;transform:translateY(8px)}}
@@ -82,9 +82,9 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 
 /* Now playing */
 .np{flex:none;display:flex;flex-direction:column;gap:16px}
-.np-top{display:flex;gap:16px;min-height:0}
+.np-top{display:flex;gap:16px;flex:1;min-height:96px}
 .np-seek{margin-top:auto}
-.art{width:136px;height:136px;flex:none;border-radius:8px;background:var(--raised);overflow:hidden;
+.art{height:100%;max-height:200px;aspect-ratio:1;flex:none;border-radius:8px;background:var(--raised);overflow:hidden;
   display:grid;place-items:center;color:var(--muted);box-shadow:0 8px 24px rgba(0,0,0,.35)}
 .art img{width:100%;height:100%;object-fit:cover;display:block}
 .np-text{display:flex;flex-direction:column;gap:4px;min-width:0;padding-top:4px}
@@ -109,7 +109,8 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 
 /* Keys */
 .keys{min-height:0;padding:12px;border-radius:20px;
-  display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(var(--rows,2),minmax(0,1fr));gap:8px}
+  display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-auto-rows:auto;gap:8px}
+.key{aspect-ratio:6/5}
 .key{position:relative;border:1px solid var(--line);border-radius:8px;background:var(--raised);color:var(--text);
   font:inherit;text-align:left;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 -3px 0 rgba(0,0,0,.35);
@@ -161,7 +162,6 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
   .stat{padding:8px 12px;gap:0}
   .stat .v{font-size:20px;line-height:28px}
   .np{gap:12px}
-  .art{width:96px;height:96px}
   .np-title{font-size:16px;line-height:22px;-webkit-line-clamp:2}
   .keys{padding:8px;border-radius:16px;gap:6px}
   .key{padding:6px 10px}
@@ -261,7 +261,6 @@ function showPage(page) {
   const keys = page ? [...base.filter(k => k.ws != null), ...keyConfig.apps[page]] : base;
   $("page").textContent = page ? `${page} keys` : "";
   const el = $("keys");
-  el.style.setProperty("--rows", Math.max(1, Math.ceil(keys.length / 6)));
   el.replaceChildren(...keys.map(k => {
     const b = document.createElement("button");
     b.className = "key";
