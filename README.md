@@ -23,7 +23,7 @@ Everything runs on your own PC and reaches the tablet through `adb reverse`. The
 **PC**
 - Hyprland, with either the Lua config or the classic `hyprland.conf`
 - `python3` (standard library only)
-- `adb`, `wayvnc`
+- `adb`, `wayvnc`, `openssl`
 - `wpctl` (PipeWire), `playerctl`
 - Optional: `qrencode` (Wi-Fi pairing), `wtype` (shortcut keys), `nvidia-smi` (NVIDIA stats), `awww` or `swww` (wallpaper copy), and whatever apps your keys launch. The default keys use `kitty`, `firefox`, `rofi` (HyDE's themed launcher when installed) and `hyprshot`
 
@@ -71,7 +71,9 @@ On the tablet, open Developer options > Wireless debugging > *Pair device with Q
 tablet wifi
 ```
 
-A background watcher checks the connection every 5 seconds. When the tablet drops off and comes back, even on a new port, it reconnects and restores the tunnels. If AVNC shows "Disconnected" afterwards, tap its retry button.
+To start over Wi-Fi automatically at login, run `tablet install wifi`. It waits until the tablet shows up on the network, and does nothing when the tablet is on USB, since the USB service handles that.
+
+A background watcher checks the connection every 5 seconds. When the tablet drops off and comes back, even on a new port, it reconnects and restores the tunnels. It also reopens AVNC.
 
 Android turns Wireless debugging off whenever Wi-Fi disconnects, even briefly, and after a reboot. This is a security measure, and the watcher can't turn it back on. To make it rarer:
 
@@ -111,6 +113,7 @@ USB is still the more reliable option, and the lower-latency one.
 | `tablet` | Creates a headless Hyprland output sized to the tablet, starts `wayvnc` and the server on Unix sockets, and tunnels them to the tablet's ports 5900 and 8765 with `adb reverse` |
 | `config.toml` | Keys, display placement, and hardware overrides |
 | `~/.config/tabdeck/token` | The secret that unlocks the API, created on first run |
+| `~/.config/tabdeck/vnc/` | The display stream's password, TLS certificate and wayvnc config, created on first run |
 | `tablet install` | Writes `/etc/udev/rules.d/70-tabdeck.rules` and `~/.config/systemd/user/tabdeck.service` |
 | `tabdeck.py` | Standard-library HTTP server. It serves the page, a JSON API with stats, player and window data, the actions from your config, and the key editor |
 | `tests/` | `python3 -m unittest discover -s tests`, also run by GitHub Actions |
@@ -175,7 +178,14 @@ Changing a key's *command* from the tablet is off by default, because it would l
 commands = true
 ```
 
-**Display.** The resolution is read from the tablet over adb, and the monitor goes right of your other screens by default. Override with `display.resolution`, `display.position` (any Hyprland position, like `auto-left` or `2646x0`) and `display.scale`.
+**Display.** The resolution is read from the tablet over adb, and the monitor goes right of your other screens by default. Override with:
+- `display.resolution`
+- `display.position`: any Hyprland position, like `auto-left` or `2646x0`
+- `display.scale`
+- `display.refresh`: 60 by default
+- `display.name`: the Hyprland output name, `TAB` by default
+
+**Ports** on the tablet's localhost default to 8765 for the command center and 5900 for the display. If another app on the tablet uses them, change `ports.command_center` and `ports.display`.
 
 **Hardware** is auto-detected:
 - network: the interface on the default route
@@ -193,7 +203,9 @@ Override any of them under `[hardware]`. A card shows "Not available" or "No bat
 - **The client never sends commands.** It sends a key id, and the server runs the matching command from your config. Window addresses, shortcuts, icons and every editor field are validated on the server.
 - **Command editing is opt-in.** See [Editing from the tablet](#configuration).
 
-What's not protected: the display stream on the tablet's port 5900 has no password, so an app installed on the tablet could connect to it and see or control your desktop. Only install apps you trust on a tablet you connect this way. VNC authentication is on the roadmap.
+- **The display stream needs a password.** wayvnc only accepts logins over TLS (VeNCrypt) with a random password from `~/.config/tabdeck/vnc/`. `tablet` passes the login to AVNC in the link it opens, so you never type it. Another app on the tablet can't watch or control your desktop without it.
+
+To reset both secrets, delete `~/.config/tabdeck/token` and `~/.config/tabdeck/vnc/`, then run `tablet` again.
 
 ## Limitations
 
@@ -207,7 +219,6 @@ VNC sends a single pointer, so touch on the display works as mouse input. Multi-
 ## Roadmap
 
 - AUR package
-- Password for the display stream (wayvnc authentication)
 
 ## Credits
 

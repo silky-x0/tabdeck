@@ -91,6 +91,20 @@ class Config(unittest.TestCase):
         for cfg in cases:
             self.assertIsNotNone(tabdeck.config_error(cfg), cfg)
 
+    def test_display_and_port_settings(self):
+        bad = [
+            {"display": {"name": "TAB;rm"}},
+            {"display": {"refresh": 0}},
+            {"display": {"refresh": "60"}},
+            {"ports": {"command_center": 80}},
+            {"ports": {"display": "5900"}},
+            {"ports": {"command_center": 5900}},
+        ]
+        for cfg in bad:
+            self.assertIsNotNone(tabdeck.config_error(cfg), cfg)
+        ok = {"display": {"name": "TABLET-2", "refresh": 120}, "ports": {"command_center": 9000, "display": 5901}}
+        self.assertIsNone(tabdeck.config_error(ok))
+
     def test_toml_round_trip(self):
         with open(ROOT / "config.toml", "rb") as f:
             cfg = tomllib.load(f)

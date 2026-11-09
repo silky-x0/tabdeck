@@ -12,6 +12,13 @@ position = "auto-right"
 scale = 1
 # Copy the wallpaper from your first monitor (needs awww or swww).
 wallpaper = true
+# refresh = 60
+# name = "TAB"           # Hyprland output name for the virtual monitor
+
+[ports]
+# Ports on the tablet's localhost. Change them if another tablet app uses these.
+command_center = 8765
+display = 5900
 
 [edit]
 # Long-press a key on the tablet to edit it. Labels, icons, shortcuts and workspaces

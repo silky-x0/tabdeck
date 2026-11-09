@@ -19,19 +19,15 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse, urlsplit
 
-PORT = 8765
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 ICONS = STATIC / "icons"
 RUNDIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "tabdeck"
 SOCKET = RUNDIR / "http.sock"
-MONITOR = "TAB"
 ADDR = re.compile(r"0x[0-9a-f]{1,16}")
 ICON_NAME = re.compile(r"[a-z0-9-]{1,64}")
 APP_CLASS = re.compile(r"[A-Za-z0-9._-]{1,64}")
-# The page is only ever loaded from the adb tunnel; anything else is another site trying to reach us.
-ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
-HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+MONITOR_NAME = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 
 def run(cmd, timeout=2):
@@ -86,6 +82,16 @@ def load_token():
 
 
 def config_error(cfg):
+    d, ports = cfg.get("display", {}), cfg.get("ports", {})
+    if not MONITOR_NAME.fullmatch(str(d.get("name", "TAB"))):
+        return "display.name must be letters, digits, - or _"
+    if not isinstance(d.get("refresh", 60), int) or not 1 <= d.get("refresh", 60) <= 240:
+        return "display.refresh must be a number from 1 to 240"
+    for k in ("command_center", "display"):
+        if k in ports and (not isinstance(ports[k], int) or not 1024 <= ports[k] <= 65535):
+            return f"ports.{k} must be a number from 1024 to 65535"
+    if ports.get("command_center", 8765) == ports.get("display", 5900):
+        return "ports.command_center and ports.display must differ"
     lists = {"keys": cfg.get("keys", [])}
     lists.update({f"apps.{a}.keys": v.get("keys", []) for a, v in cfg.get("apps", {}).items()})
     for where, keys in lists.items():
@@ -150,6 +156,12 @@ def dump_toml(cfg):
 CFG = load_config()
 HW = CFG.get("hardware", {})
 CFG_LOCK = threading.Lock()
+MONITOR = CFG.get("display", {}).get("name", "TAB")
+PORT = CFG.get("ports", {}).get("command_center", 8765)
+VNC_PORT = CFG.get("ports", {}).get("display", 5900)
+# The page is only ever loaded from the adb tunnel; anything else is another site trying to reach us.
+ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
+HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 
 
 def hypr_lua():
@@ -523,7 +535,7 @@ def setup_display():
     if not any(m["name"] == MONITOR for m in monitors):
         run(["hyprctl", "output", "create", "headless", MONITOR])
         time.sleep(1)
-    mode, pos, scale = f"{tablet_resolution()}@60", d.get("position", "auto-right"), d.get("scale", 1)
+    mode, pos, scale = f"{tablet_resolution()}@{d.get('refresh', 60)}", d.get("position", "auto-right"), d.get("scale", 1)
     if LUA:
         run(["hyprctl", "eval", f'hl.monitor({{output="{MONITOR}", mode="{mode}", position="{pos}", scale={scale}}})'])
     else:
@@ -664,5 +676,8 @@ def serve():
 if __name__ == "__main__":
     if sys.argv[1:] == ["setup-display"]:
         setup_display()
+    elif sys.argv[1:] == ["env"]:
+        # Validated values for the tablet script to eval.
+        print(f"MON={MONITOR} PORT={PORT} VNC_PORT={VNC_PORT}")
     else:
         serve()

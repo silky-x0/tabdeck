@@ -1,36 +1,56 @@
 #!/usr/bin/env bash
-# Usage: tablet             start extended display + command center over USB
-#        tablet wifi        start over Wi-Fi (pair once with: tablet pair)
-#        tablet pair        pair the tablet for Wi-Fi by scanning a QR code
-#        tablet stop        tear it all down
-#        tablet install     start automatically when this tablet is plugged in (asks for sudo)
-#        tablet uninstall   remove the automatic start
+# Usage: tablet                 start extended display + command center over USB
+#        tablet wifi            start over Wi-Fi (pair once with: tablet pair)
+#        tablet pair            pair the tablet for Wi-Fi by scanning a QR code
+#        tablet stop            tear it all down
+#        tablet install         start automatically when this tablet is plugged in (asks for sudo)
+#        tablet install wifi    start over Wi-Fi automatically at login
+#        tablet uninstall       remove both automatic starts
 set -u
 DIR="$(dirname "$(readlink -f "$0")")"
 SELF="$DIR/tablet"
-UNIT="$HOME/.config/systemd/user/tabdeck.service"
+UNITS="$HOME/.config/systemd/user"
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/tabdeck"
+VNC="$CONF/vnc"
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/tabdeck"
 RULE=/etc/udev/rules.d/70-tabdeck.rules
+
+MON=TAB PORT=8765 VNC_PORT=5900
+env_out=$(cd "$DIR" && python3 tabdeck.py env 2>&1) && eval "$env_out" || echo "Config problem: $env_out" >&2
 
 teardown() {
     pkill -f "^bash $SELF watch" 2>/dev/null
     pkill -x wayvnc
     pkill -f '^python3 tabdeck.py'
-    hyprctl output remove TAB >/dev/null 2>&1
+    hyprctl output remove "$MON" >/dev/null 2>&1
     local s
     for s in $(adb devices | awk 'NR > 1 && $2 == "device" {print $1}'); do
-        adb -s "$s" reverse --remove-all 2>/dev/null
+        timeout 5 adb -s "$s" reverse --remove-all 2>/dev/null
     done
     rm -f "$RUN/serial"
 }
 
 tunnel() {
-    adb -s "$1" reverse tcp:5900 "localfilesystem:$RUN/vnc.sock" >/dev/null &&
-        adb -s "$1" reverse tcp:8765 "localfilesystem:$RUN/http.sock" >/dev/null
+    adb -s "$1" reverse "tcp:$VNC_PORT" "localfilesystem:$RUN/vnc.sock" >/dev/null &&
+        adb -s "$1" reverse "tcp:$PORT" "localfilesystem:$RUN/http.sock" >/dev/null
+}
+
+# The display stream needs a password over TLS; both live in a 0700 dir and AVNC gets them in the link.
+vnc_setup() {
+    mkdir -p -m 700 "$VNC"
+    (
+        umask 077
+        [[ -s "$VNC/password" ]] || tr -dc A-Za-z0-9 </dev/urandom | head -c 24 > "$VNC/password"
+        [[ -s "$VNC/tls_cert.pem" ]] || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \
+            -days 3650 -subj /CN=tabdeck -keyout "$VNC/tls_key.pem" -out "$VNC/tls_cert.pem" 2>/dev/null
+        printf 'enable_auth=true\nusername=tabdeck\npassword=%s\nprivate_key_file=%s\ncertificate_file=%s\n' \
+            "$(cat "$VNC/password")" "$VNC/tls_key.pem" "$VNC/tls_cert.pem" > "$VNC/config"
+    )
 }
 
 open_avnc() {
-    adb -s "$1" shell am start -a android.intent.action.VIEW -d 'vnc://127.0.0.1:5900' com.gaurav.avnc >/dev/null 2>&1
+    adb -s "$1" shell am start -a android.intent.action.VIEW \
+        -d "'vnc://127.0.0.1:$VNC_PORT?VncUsername=tabdeck&VncPassword=$(cat "$VNC/password")'" com.gaurav.avnc >/dev/null 2>&1
 }
 
 # A dropped Wi-Fi link can still report "device", and adb calls on it hang, so probe with a timeout.
@@ -48,10 +68,34 @@ wifi_connect() {
     return 1
 }
 
+usb_present() {
+    [[ "$(timeout 3 adb -d get-state 2>/dev/null)" == device ]]
+}
+
+write_unit() {
+    mkdir -p "$UNITS"
+    cat > "$UNITS/$1" <<EOF
+[Unit]
+Description=tabdeck: tablet display and command center ($2)
+$3
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=infinity
+ExecStart="$SELF" $4
+ExecStop="$SELF" teardown
+
+[Install]
+WantedBy=graphical-session.target
+EOF
+}
+
 case "${1:-}" in
 stop)
-    # Stop the service too, so the next plug-in can start it again.
-    systemctl --user stop tabdeck.service 2>/dev/null
+    # Stop the services too, so the next plug-in or login can start them again.
+    systemctl --user stop tabdeck.service tabdeck-wifi.service 2>/dev/null
     teardown
     echo "Stopped"
     exit 0
@@ -87,31 +131,24 @@ watch)
     # Runs in the background in Wi-Fi mode: reconnect when the tablet drops, then restore the tunnels.
     while sleep 5; do
         serial=$(cat "$RUN/serial" 2>/dev/null) || exit 0
-        alive "$serial" && timeout 6 adb -s "$serial" reverse --list 2>/dev/null | grep -q 8765 && continue
+        alive "$serial" && timeout 6 adb -s "$serial" reverse --list 2>/dev/null | grep -q "tcp:$PORT" && continue
         timeout 5 adb disconnect "$serial" >/dev/null 2>&1
         new=$(wifi_connect) || continue
         tunnel "$new" && echo "$new" > "$RUN/serial" && open_avnc "$new"
     done
     ;;
 install)
+    if [[ "${2:-}" == wifi ]]; then
+        write_unit tabdeck-wifi.service Wi-Fi "" "wifi --wait"
+        systemctl --user daemon-reload
+        systemctl --user enable tabdeck-wifi.service >/dev/null 2>&1
+        echo "Installed. At login, tabdeck waits for the tablet on Wi-Fi and starts when it's found."
+        exit 0
+    fi
     serial=$(timeout 5 adb -d get-serialno 2>/dev/null)
     [[ "$serial" =~ ^[A-Za-z0-9]+$ ]] || { echo "Plug in the tablet with USB debugging allowed, then retry"; exit 1; }
-    mkdir -p "$(dirname "$UNIT")"
-    cat > "$UNIT" <<EOF
-[Unit]
-Description=tabdeck: tablet display and command center
-BindsTo=sys-subsystem-usb-tabdeck.device
-After=sys-subsystem-usb-tabdeck.device graphical-session.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart="$SELF"
-ExecStop="$SELF" teardown
-
-[Install]
-WantedBy=graphical-session.target
-EOF
+    write_unit tabdeck.service USB "BindsTo=sys-subsystem-usb-tabdeck.device
+After=sys-subsystem-usb-tabdeck.device" ""
     # ACTION!="remove" keeps the systemd tag on change events, so the device unit stays plugged.
     echo "ACTION!=\"remove\", SUBSYSTEM==\"usb\", ENV{DEVTYPE}==\"usb_device\", ATTR{serial}==\"$serial\", TAG+=\"systemd\", ENV{SYSTEMD_ALIAS}=\"/sys/subsystem/usb/tabdeck\", ENV{SYSTEMD_USER_WANTS}=\"tabdeck.service\"" \
         | sudo tee "$RULE" >/dev/null || exit 1
@@ -122,16 +159,22 @@ EOF
     exit 0
     ;;
 uninstall)
-    systemctl --user disable --now tabdeck.service 2>/dev/null
-    rm -f "$UNIT"
+    systemctl --user disable --now tabdeck.service tabdeck-wifi.service 2>/dev/null
+    rm -f "$UNITS/tabdeck.service" "$UNITS/tabdeck-wifi.service"
     systemctl --user daemon-reload
-    sudo rm -f "$RULE" && sudo udevadm control --reload
+    if [[ -f "$RULE" ]]; then sudo rm -f "$RULE" && sudo udevadm control --reload; fi
     echo "Uninstalled"
     exit 0
     ;;
 wifi)
     echo "Looking for the tablet on Wi-Fi..."
-    ANDROID_SERIAL=$(wifi_connect) || { echo "Not found. Turn on Wireless debugging on the tablet, or pair first with: tablet pair"; exit 1; }
+    while :; do
+        # With USB connected, the USB service owns the session.
+        [[ "${2:-}" == --wait ]] && usb_present && { echo "Tablet is on USB, leaving it to the USB service"; exit 0; }
+        ANDROID_SERIAL=$(wifi_connect) && break
+        [[ "${2:-}" == --wait ]] || { echo "Not found. Turn on Wireless debugging on the tablet, or pair first with: tablet pair"; exit 1; }
+        sleep 10
+    done
     ;;
 "")
     echo "Waiting for tablet on USB (plug it in, allow USB debugging)..."
@@ -139,7 +182,7 @@ wifi)
     ANDROID_SERIAL=$(adb -d get-serialno)
     ;;
 *)
-    sed -n '2,7p' "$SELF" | sed 's/^# \{0,1\}//'
+    sed -n '2,8p' "$SELF" | sed 's/^# \{0,1\}//'
     exit 1
     ;;
 esac
@@ -151,16 +194,17 @@ for _ in {1..30}; do hyprctl monitors >/dev/null 2>&1 && break; sleep 1; done
 
 # Both servers listen on sockets in a 0700 dir, so only this user and its adb tunnel can reach them.
 mkdir -p -m 700 "$RUN"
+vnc_setup
 # wayvnc leaves its socket behind when killed and then refuses to bind, so clear it first.
-pgrep -x wayvnc >/dev/null || { rm -f "$RUN/vnc.sock"; setsid wayvnc -u -o TAB "$RUN/vnc.sock" >/dev/null 2>&1 & }
+pgrep -x wayvnc >/dev/null || { rm -f "$RUN/vnc.sock"; setsid wayvnc -C "$VNC/config" -u -o "$MON" "$RUN/vnc.sock" >/dev/null 2>&1 & }
 pgrep -f '^python3 tabdeck.py' >/dev/null || (cd "$DIR" && setsid python3 tabdeck.py >server.log 2>&1 &)
 sleep 1
 
 tunnel "$ANDROID_SERIAL" || { echo "Could not set up the tunnel to the tablet"; exit 1; }
 # Opening the page with the secret stores it as a cookie in the tablet's browser, which unlocks the API.
-token="${XDG_CONFIG_HOME:-$HOME/.config}/tabdeck/token"
+token="$CONF/token"
 for _ in {1..10}; do [[ -s "$token" ]] && break; sleep 0.5; done
-adb shell am start -a android.intent.action.VIEW -d "http://127.0.0.1:8765/?t=$(cat "$token")" >/dev/null 2>&1
+adb shell am start -a android.intent.action.VIEW -d "http://127.0.0.1:$PORT/?t=$(cat "$token")" >/dev/null 2>&1
 sleep 1
 open_avnc "$ANDROID_SERIAL"
 
@@ -169,4 +213,4 @@ if [[ "${1:-}" == wifi ]]; then
     pgrep -f "^bash $SELF watch" >/dev/null || setsid bash "$SELF" watch >/dev/null 2>&1 &
 fi
 
-echo "Ready. Display is in AVNC, command center at http://127.0.0.1:8765"
+echo "Ready. Display is in AVNC, command center at http://127.0.0.1:$PORT"
