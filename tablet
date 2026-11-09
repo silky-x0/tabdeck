@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Usage: tablet        start extended display + command center over USB
+#        tablet stop   tear it all down
+set -u
+MON=TAB
+DIR="$(dirname "$(readlink -f "$0")")"
+
+if [[ "${1:-}" == stop ]]; then
+    pkill -x wayvnc
+    pkill -f '^python3 tabdeck.py'
+    hyprctl output remove "$MON" >/dev/null
+    adb reverse --remove-all 2>/dev/null
+    echo "Stopped"
+    exit 0
+fi
+
+echo "Waiting for tablet on USB (plug it in, allow USB debugging)..."
+timeout 60 adb wait-for-usb-device || { echo "No tablet found"; exit 1; }
+
+if ! hyprctl monitors | grep -q "^Monitor $MON "; then
+    hyprctl output create headless "$MON" >/dev/null
+    sleep 1
+fi
+hyprctl eval "hl.monitor({output=\"$MON\", mode=\"1340x800@60\", position=\"2646x0\", scale=1})" >/dev/null
+
+wall=$(awww query | sed -n 's/.*eDP-1.*currently displaying: image: //p')
+[[ -n "$wall" ]] && awww img -o "$MON" "$wall"
+
+pgrep -x wayvnc >/dev/null || setsid wayvnc -o "$MON" 127.0.0.1 5900 >/dev/null 2>&1 &
+pgrep -f '^python3 tabdeck.py' >/dev/null || (cd "$DIR" && setsid python3 tabdeck.py >server.log 2>&1 &)
+sleep 1
+
+adb -d reverse tcp:5900 tcp:5900 >/dev/null
+adb -d reverse tcp:8765 tcp:8765 >/dev/null
+adb -d shell am start -a android.intent.action.VIEW -d 'vnc://127.0.0.1:5900' com.gaurav.avnc >/dev/null 2>&1
+
+echo "Ready. Display is in AVNC, command center at http://127.0.0.1:8765"

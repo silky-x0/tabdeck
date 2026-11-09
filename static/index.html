@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="theme-color" content="#141415">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Command Center</title>
+<style>
+@font-face{font-family:Geist;src:url(fonts/geist.woff2) format("woff2");font-weight:100 900}
+@font-face{font-family:"Geist Mono";src:url(fonts/geist-mono.woff2) format("woff2");font-weight:100 900}
+:root{
+  --deep:#0f0f10;--bg:#141415;--card:#19191b;--raised:#232325;
+  --line:rgba(237,237,237,.08);
+  --text:#ededed;--text-2:#a1a1a6;--muted:#85858b;
+  --accent:#fab387;--on-accent:#1b1410;
+  --good:#4cc38a;--bad:#e5484d;
+  --ease:cubic-bezier(.22,1,.36,1);
+  --mono:"Geist Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{
+  background:var(--bg);color:var(--text);
+  font:400 14px/20px Geist,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;user-select:none;
+  overflow:hidden;
+}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.i{width:18px;height:18px;flex:none;background:currentColor;
+  -webkit-mask:var(--src) center/contain no-repeat;mask:var(--src) center/contain no-repeat}
+
+.grid{
+  height:100dvh;padding:12px;
+  display:grid;gap:12px;
+  grid-template-columns:repeat(12,minmax(0,1fr));
+  grid-template-rows:auto minmax(0,1.15fr) auto minmax(128px,1fr);
+  animation:enter .4s var(--ease) both;
+}
+@keyframes enter{from{opacity:0;transform:translateY(8px)}}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;min-height:0;min-width:0}
+.label{color:var(--text-2);font-size:13px}
+.meta{color:var(--muted);font-size:12px;line-height:16px}
+
+/* Header */
+header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:4px 4px 0;height:36px}
+.host{display:flex;align-items:baseline;gap:12px}
+.host b{font-weight:500;font-size:16px}
+.clock{display:flex;align-items:center;gap:16px}
+.clock .time{font-size:20px;font-weight:500}
+.link{display:flex;align-items:center;gap:8px}
+.dot{width:6px;height:6px;border-radius:3px;background:var(--good);transition:background-color .18s var(--ease)}
+.link.off .dot{background:var(--bad)}
+
+/* CPU */
+.cpu{grid-column:1/8;grid-row:2;display:flex;flex-direction:column;gap:12px}
+.cpu-head{display:flex;align-items:flex-end;justify-content:space-between}
+.figure{font-size:32px;line-height:1;font-weight:500}
+.cpu-temp{color:var(--text-2);font-size:13px;margin-left:12px}
+.chart{position:relative;flex:1;min-height:0;margin-right:32px}
+.chart svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.chart .gl{stroke:var(--line);stroke-width:1;vector-effect:non-scaling-stroke}
+.chart .area{fill:var(--accent);opacity:.08}
+.chart .ln{fill:none;stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.chart .ax{position:absolute;right:-32px;width:24px;text-align:right;transform:translateY(-50%)}
+.chart .head{position:absolute;right:-4px;width:8px;height:8px;border-radius:4px;background:var(--accent);
+  box-shadow:0 0 0 3px var(--card);transform:translateY(-50%);transition:top .3s var(--ease)}
+
+/* Stats */
+.stats{grid-column:1/8;grid-row:3;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stat{display:flex;flex-direction:column;gap:4px;padding:12px 16px}
+.stat .v{font-size:24px;line-height:32px;font-weight:500;white-space:nowrap}
+.stat .v small,.figure small{font-size:14px;color:var(--text-2);font-weight:400;margin-left:4px}
+.stat .meta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Now playing */
+.np{grid-column:8/13;grid-row:2/4;display:flex;flex-direction:column;gap:16px}
+.np-top{display:flex;gap:16px;min-height:0}
+.np-seek{margin-top:auto}
+.art{width:136px;height:136px;flex:none;border-radius:8px;background:var(--raised);overflow:hidden;
+  display:grid;place-items:center;color:var(--muted);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.art img{width:100%;height:100%;object-fit:cover;display:block}
+.np-text{display:flex;flex-direction:column;gap:4px;min-width:0;padding-top:4px}
+.np-title{font-size:18px;line-height:24px;font-weight:500;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.np-artist{color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np-player{margin-top:auto}
+.bar{height:4px;border-radius:2px;background:var(--raised);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);transform-origin:left;transform:scaleX(0);transition:transform 1s linear}
+.times{display:flex;justify-content:space-between;margin-top:8px}
+.controls{display:flex;align-items:center;justify-content:space-between}
+.group{display:flex;align-items:center;gap:4px}
+.btn{width:44px;height:44px;border:0;border-radius:10px;background:transparent;color:var(--text);
+  display:grid;place-items:center;transition:background-color .15s var(--ease),transform .15s var(--ease)}
+.btn:active{background:var(--raised);transform:scale(.97)}
+.btn.primary{background:var(--text);color:var(--bg);box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
+.btn.primary:active{background:var(--text-2)}
+.btn.sm{width:40px;height:40px;color:var(--text-2)}
+.vol{width:40px;text-align:center;color:var(--text-2);font-size:13px}
+.vol.muted{color:var(--muted);text-decoration:line-through}
+.np.idle .np-title{color:var(--text-2)}
+
+/* Keys */
+.keys{grid-column:1/8;grid-row:4;padding:12px;border-radius:20px;
+  display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:8px}
+.key{position:relative;border:1px solid var(--line);border-radius:8px;background:var(--raised);color:var(--text);
+  font:inherit;text-align:left;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 -3px 0 rgba(0,0,0,.35);
+  transition:transform .12s var(--ease),box-shadow .12s var(--ease),background-color .12s var(--ease)}
+.key:active{transform:translateY(1px) scale(.98);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),inset 0 -1px 0 rgba(0,0,0,.35)}
+.key .i{color:var(--text-2)}
+.key .n{font-size:20px;line-height:24px;font-weight:500}
+.key .cap{font-size:13px;line-height:16px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.key .led{position:absolute;top:12px;right:12px;width:6px;height:6px;border-radius:3px;background:#2e2e31;transition:background-color .18s var(--ease)}
+.key.on .led{background:var(--accent)}
+.key.err{background:#3a1d1f}
+
+/* Windows */
+.wins{grid-column:8/13;grid-row:4;display:flex;flex-direction:column;gap:8px;padding:16px 8px 8px}
+.wins-head{display:flex;justify-content:space-between;padding:0 8px}
+.list{overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:2px}
+.list::-webkit-scrollbar{display:none}
+.row{display:flex;align-items:center;height:40px;flex:none;border-radius:8px;transition:background-color .15s var(--ease)}
+.row:has(.go:active){background:var(--raised)}
+.go{flex:1;min-width:0;height:100%;display:flex;align-items:center;gap:10px;padding:0 8px;border:0;
+  background:transparent;color:inherit;font:inherit;text-align:left;border-radius:8px}
+.x{width:40px;height:40px;flex:none;border:0;border-radius:8px;background:transparent;color:var(--muted);
+  display:grid;place-items:center;transition:background-color .15s var(--ease),color .15s var(--ease)}
+.x:active{background:#3a1d1f;color:var(--bad)}
+.row.active{background:var(--raised);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+.row .ws{width:16px;flex:none;color:var(--muted);font-size:12px}
+.row .cls{flex:none;font-weight:500;max-width:40%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .ttl{flex:1;min-width:0;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.active .ws{color:var(--accent)}
+.empty{color:var(--muted);padding:8px}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+@media (max-aspect-ratio:1/1){
+  body{overflow:auto}
+  .grid{height:auto;grid-template-columns:1fr;grid-template-rows:auto}
+  .grid>*{grid-column:1!important;grid-row:auto!important}
+  .cpu{height:240px}
+  .keys{height:200px}
+  .wins{max-height:320px}
+}
+@media (max-height:540px){
+  .grid{gap:8px;padding:8px}
+  header{height:28px;padding-top:0}
+  .card{padding:12px}
+  .cpu{gap:8px}
+  .stats{gap:8px}
+  .stat{padding:8px 12px;gap:0}
+  .stat .v{font-size:20px;line-height:28px}
+  .np{gap:12px}
+  .art{width:96px;height:96px}
+  .np-title{font-size:16px;line-height:22px;-webkit-line-clamp:2}
+  .keys{padding:8px;border-radius:16px;gap:6px}
+  .key{padding:6px 10px}
+  .key .n{font-size:16px;line-height:20px}
+  .key .led{top:8px;right:10px}
+  .wins{padding:12px 4px 4px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="grid">
+  <header>
+    <div class="host"><b id="host">—</b><span class="meta" id="uptime"></span></div>
+    <div class="clock">
+      <div class="link" id="link"><span class="dot"></span><span class="meta" id="linkText">Linked</span></div>
+      <span class="meta" id="date"></span>
+      <span class="time num" id="time"></span>
+    </div>
+  </header>
+
+  <section class="card cpu">
+    <div class="cpu-head">
+      <span class="label">Processor</span>
+      <div><span class="figure num" id="cpu">0<small>%</small></span><span class="cpu-temp num" id="cpuTemp"></span></div>
+    </div>
+    <div class="chart" id="chart">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+        <line class="gl" x1="0" x2="100" y1="0" y2="0"/>
+        <line class="gl" x1="0" x2="100" y1="50" y2="50"/>
+        <line class="gl" x1="0" x2="100" y1="100" y2="100"/>
+        <path class="area" id="area"/><path class="ln" id="line"/>
+      </svg>
+      <span class="ax meta num" style="top:0">100</span>
+      <span class="ax meta num" style="top:50%">50</span>
+      <span class="ax meta num" style="top:100%">0</span>
+      <span class="head" id="head" style="top:100%"></span>
+    </div>
+    <span class="meta">Last 2 minutes</span>
+  </section>
+
+  <section class="stats">
+    <div class="card stat"><span class="label">Memory</span><span class="v num" id="mem">—</span><span class="meta num" id="memSub"></span></div>
+    <div class="card stat"><span class="label">Graphics</span><span class="v num" id="gpu">—</span><span class="meta num" id="gpuSub"></span></div>
+    <div class="card stat"><span class="label">Battery</span><span class="v num" id="bat">—</span><span class="meta" id="batSub"></span></div>
+    <div class="card stat"><span class="label">Network</span><span class="v num" id="down">—</span><span class="meta num" id="up"></span></div>
+  </section>
+
+  <section class="card np idle" id="np">
+    <div class="np-top">
+      <div class="art" id="art"><span class="i" style="--src:url(icons/music.svg);width:32px;height:32px"></span></div>
+      <div class="np-text">
+        <span class="np-title" id="title">Nothing playing</span>
+        <span class="np-artist" id="artist"></span>
+        <span class="meta np-player" id="playerName"></span>
+      </div>
+    </div>
+    <div class="np-seek">
+      <div class="bar"><i id="progress"></i></div>
+      <div class="times meta num"><span id="pos">0:00</span><span id="len">0:00</span></div>
+    </div>
+    <div class="controls">
+      <div class="group">
+        <button class="btn" data-run="prev" aria-label="Previous"><span class="i" style="--src:url(icons/skip-back.svg)"></span></button>
+        <button class="btn primary" data-run="play" aria-label="Play or pause"><span class="i" id="playIcon" style="--src:url(icons/play.svg)"></span></button>
+        <button class="btn" data-run="next" aria-label="Next"><span class="i" style="--src:url(icons/skip-forward.svg)"></span></button>
+      </div>
+      <div class="group">
+        <button class="btn sm" data-run="voldown" aria-label="Volume down"><span class="i" style="--src:url(icons/volume-1.svg)"></span></button>
+        <button class="btn sm vol num" data-run="mute" id="vol" aria-label="Mute">—</button>
+        <button class="btn sm" data-run="volup" aria-label="Volume up"><span class="i" style="--src:url(icons/volume-2.svg)"></span></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card keys" id="keys"></section>
+
+  <section class="card wins">
+    <div class="wins-head"><span class="label">Windows</span><span class="meta num" id="winCount"></span></div>
+    <div class="list" id="list"></div>
+  </section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const KEYS = [
+  ...[1,2,3,4,5,6].map(n => ({id:`ws${n}`, ws:n})),
+  {id:"term", icon:"terminal", cap:"Terminal"},
+  {id:"web", icon:"globe", cap:"Firefox"},
+  {id:"files", icon:"folder", cap:"Files"},
+  {id:"launcher", icon:"layout-grid", cap:"Apps"},
+  {id:"shot", icon:"scan", cap:"Capture"},
+  {id:"lock", icon:"lock", cap:"Lock"},
+];
+
+$("keys").innerHTML = KEYS.map(k => k.ws
+  ? `<button class="key" data-run="${k.id}" data-ws="${k.ws}"><span class="n num">${k.ws}</span><span class="cap num" data-count></span><span class="led"></span></button>`
+  : `<button class="key" data-run="${k.id}"><span class="i" style="--src:url(icons/${k.icon}.svg)"></span><span class="cap">${k.cap}</span></button>`
+).join("");
+
+async function post(url, el) {
+  const r = await fetch(url, {method:"POST"}).catch(() => null);
+  if (!r || !r.ok) { el.classList.add("err"); setTimeout(() => el.classList.remove("err"), 600); }
+  else setTimeout(pollAll, 250);
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-run],[data-focus],[data-close]");
+  if (b) post(b.dataset.run ? `/run/${b.dataset.run}` : b.dataset.focus ? `/focus/${b.dataset.focus}` : `/close/${b.dataset.close}`, b);
+});
+
+const pad = n => String(n).padStart(2, "0");
+const clock = s => `${Math.floor(s / 60)}:${pad(Math.floor(s % 60))}`;
+const gb = kb => (kb / 1048576).toFixed(1);
+const rate = b => b < 1e6 ? `${Math.round(b / 1e3)} KB/s` : `${(b / 1e6).toFixed(1)} MB/s`;
+function uptime(s) {
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return `Hyprland · up ${d ? `${d}d ${h}h` : `${h}h ${m}m`}`;
+}
+
+function tick() {
+  const now = new Date();
+  $("time").textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  $("date").textContent = now.toLocaleDateString("en-GB", {weekday:"short", day:"numeric", month:"short"});
+}
+
+const HIST = 80, hist = [];
+function drawChart() {
+  if (hist.length < 2) return;
+  const pts = hist.map((v, i) => [(i + HIST - hist.length) / (HIST - 1) * 100, 100 - v]);
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    d += `C${p1[0] + (p2[0] - p0[0]) / 6},${p1[1] + (p2[1] - p0[1]) / 6} ${p2[0] - (p3[0] - p1[0]) / 6},${p2[1] - (p3[1] - p1[1]) / 6} ${p2[0]},${p2[1]}`;
+  }
+  $("line").setAttribute("d", d);
+  $("area").setAttribute("d", `${d}L100,100L${pts[0][0]},100Z`);
+  $("head").style.top = `${100 - hist.at(-1)}%`;
+}
+
+function renderStats(s) {
+  $("host").textContent = s.host;
+  $("uptime").textContent = uptime(s.uptime);
+  $("cpu").innerHTML = `${s.cpu}<small>%</small>`;
+  $("cpuTemp").textContent = s.cpuTemp != null ? `${s.cpuTemp}°C` : "";
+  hist.push(s.cpu); if (hist.length > HIST) hist.shift();
+  drawChart();
+  $("mem").innerHTML = `${gb(s.memUsed)}<small>GB</small>`;
+  $("memSub").textContent = `of ${gb(s.memTotal)} GB`;
+  const g = s.gpu;
+  if (!g) { $("gpu").textContent = "—"; $("gpuSub").textContent = "No reading"; }
+  else if (g.asleep) { $("gpu").textContent = "Asleep"; $("gpuSub").textContent = "RTX 3050 powered down"; }
+  else { $("gpu").innerHTML = `${g.util}<small>%</small>`; $("gpuSub").textContent = `${g.temp}°C · ${(g.memUsed / 1024).toFixed(1)} GB`; }
+  $("bat").innerHTML = `${s.battery.level}<small>%</small>`;
+  $("batSub").textContent = s.battery.status === "Not charging" ? "Plugged in" : s.battery.status;
+  $("down").innerHTML = rate(s.net.down).replace(" ", "<small>") + "</small>";
+  $("up").textContent = `Up ${rate(s.net.up)}`;
+}
+
+let artSrc = null, player = null, fetchedAt = 0;
+function renderPlayer(p) {
+  player = p; fetchedAt = performance.now();
+  const has = p.status !== "Stopped" && p.title;
+  $("np").classList.toggle("idle", !has);
+  $("title").textContent = has ? p.title : "Nothing playing";
+  $("artist").textContent = has ? (p.artist || p.album || "") : "";
+  $("playerName").textContent = has ? `${p.status} on ${p.player[0].toUpperCase()}${p.player.slice(1)}` : "";
+  $("playIcon").style.setProperty("--src", `url(icons/${p.status === "Playing" ? "pause" : "play"}.svg)`);
+  const v = $("vol");
+  v.textContent = p.volume.level; v.classList.toggle("muted", p.volume.muted);
+  const src = has ? p.art : null;
+  if (src !== artSrc) {
+    artSrc = src;
+    $("art").innerHTML = src ? `<img alt="" src="${src}">` : `<span class="i" style="--src:url(icons/music.svg);width:32px;height:32px"></span>`;
+    const img = $("art").querySelector("img");
+    if (img) img.onerror = () => { artSrc = null; img.remove(); };
+  }
+  progress();
+}
+function progress() {
+  const p = player;
+  if (!p || !p.length) { $("progress").style.transform = "scaleX(0)"; $("pos").textContent = $("len").textContent = "0:00"; return; }
+  const pos = Math.min(p.length, p.position + (p.status === "Playing" ? (performance.now() - fetchedAt) / 1000 : 0));
+  $("progress").style.transform = `scaleX(${pos / p.length})`;
+  $("pos").textContent = clock(pos);
+  $("len").textContent = clock(p.length);
+}
+
+function renderWindows(w) {
+  $("winCount").textContent = w.windows.length;
+  const counts = {};
+  w.windows.forEach(x => counts[x.workspace] = (counts[x.workspace] || 0) + 1);
+  document.querySelectorAll("[data-ws]").forEach(k => {
+    const n = +k.dataset.ws, c = counts[n] || 0;
+    k.classList.toggle("on", w.workspaces.includes(n));
+    k.querySelector("[data-count]").textContent = c ? `${c} open` : "Empty";
+  });
+  const list = $("list");
+  if (!w.windows.length) { list.innerHTML = `<p class="empty">No open windows</p>`; return; }
+  list.replaceChildren(...w.windows.map(x => {
+    const row = document.createElement("div");
+    row.className = "row" + (x.active ? " active" : "");
+    row.innerHTML = `<button class="go" data-focus="${x.address}"><span class="ws num"></span><span class="cls"></span><span class="ttl"></span></button>`
+      + `<button class="x" data-close="${x.address}" aria-label="Close window"><span class="i" style="--src:url(icons/x.svg)"></span></button>`;
+    const go = row.firstChild;
+    go.children[0].textContent = x.workspace;
+    go.children[1].textContent = x.class;
+    go.children[2].textContent = x.title;
+    return row;
+  }));
+}
+
+async function get(path, render) {
+  try {
+    const r = await fetch(path);
+    if (!r.ok) throw 0;
+    render(await r.json());
+    return true;
+  } catch { return false; }
+}
+async function pollAll() {
+  const ok = await Promise.all([get("/api/stats", renderStats), get("/api/player", renderPlayer), get("/api/windows", renderWindows)]);
+  const live = ok.every(Boolean);
+  $("link").classList.toggle("off", !live);
+  $("linkText").textContent = live ? "Linked" : "Offline";
+}
+
+// Browser chrome eats a quarter of the tablet's height, so the first tap goes fullscreen.
+document.addEventListener("pointerup", () => {
+  if (!document.fullscreenElement && !matchMedia("(display-mode: fullscreen)").matches)
+    document.documentElement.requestFullscreen?.().catch(() => {});
+}, {once: true});
+
+tick(); setInterval(tick, 1000);
+pollAll(); setInterval(pollAll, 1500);
+setInterval(progress, 1000);
+</script>
+</body>
+</html>
