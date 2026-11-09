@@ -73,7 +73,15 @@ tablet wifi
 
 A background watcher checks the connection every 5 seconds. When the tablet drops off and comes back, even on a new port, it reconnects and restores the tunnels. If AVNC shows "Disconnected" afterwards, tap its retry button.
 
-Android turns Wireless debugging off by itself after some network changes, and the watcher can't turn it back on. When that happens, switch it back on in Developer options. USB is still the more reliable option, and the lower-latency one.
+Android turns Wireless debugging off whenever Wi-Fi disconnects, even briefly, and after a reboot. This is a security measure, and the watcher can't turn it back on. To make it rarer:
+
+- Keep Wi-Fi awake. On Samsung, open Settings > Connections > Wi-Fi > Intelligent Wi-Fi and turn off *Switch to mobile data* and any power-saving options.
+- Turn on Developer options > *Stay awake*, so the screen doesn't sleep while charging.
+- Turn on Developer options > *Disable adb authorization timeout*, so the pairing doesn't expire after 7 days.
+- Add the *Wireless debugging* tile under Developer options > Quick settings developer tiles, so it's one tap to turn back on.
+- If your router has separate 2.4 GHz and 5 GHz network names, keep the tablet on one of them.
+
+USB is still the more reliable option, and the lower-latency one.
 
 ## How it works
 
