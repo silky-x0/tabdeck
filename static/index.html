@@ -9,22 +9,25 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>tabdeck</title>
 <style>
-@font-face{font-family:Geist;src:url(fonts/geist.woff2) format("woff2");font-weight:100 900}
-@font-face{font-family:"Geist Mono";src:url(fonts/geist-mono.woff2) format("woff2");font-weight:100 900}
+@font-face{font-family:"IBM Plex Sans";src:url(fonts/ibm-plex-sans-400.woff2) format("woff2");font-weight:400}
+@font-face{font-family:"IBM Plex Sans";src:url(fonts/ibm-plex-sans-500.woff2) format("woff2");font-weight:500}
+@font-face{font-family:"IBM Plex Mono";src:url(fonts/ibm-plex-mono-400.woff2) format("woff2");font-weight:400}
+@font-face{font-family:"IBM Plex Mono";src:url(fonts/ibm-plex-mono-500.woff2) format("woff2");font-weight:500}
 :root{
   --deep:#0f0f10;--bg:#141415;--card:#19191b;--raised:#232325;
   --line:rgba(237,237,237,.08);
   --text:#ededed;--text-2:#a1a1a6;--muted:#85858b;
-  --accent:#fab387;--on-accent:#1b1410;
+  --accent:#fab387;
   --good:#4cc38a;--bad:#e5484d;
+  --press:#2a2a2d;--led-off:#2e2e31;--danger-surface:#3a1d1f;--listen-surface:#3a2a1f;--scrim:rgba(8,8,9,.6);
   --ease:cubic-bezier(.22,1,.36,1);
-  --mono:"Geist Mono",ui-monospace,monospace;
+  --mono:"IBM Plex Mono",ui-monospace,monospace;
 }
 *{box-sizing:border-box;margin:0}
 html,body{height:100%}
 body{
   background:var(--bg);color:var(--text);
-  font:400 14px/20px Geist,system-ui,sans-serif;
+  font:400 14px/20px "IBM Plex Sans",system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;
   -webkit-tap-highlight-color:transparent;user-select:none;
   overflow:hidden;
@@ -43,7 +46,8 @@ body{
 @keyframes enter{from{opacity:0;transform:translateY(8px)}}
 
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;min-height:0;min-width:0}
-.label{color:var(--text-2);font-size:13px}
+.label{color:var(--text-2);font-size:13px;line-height:20px;font-weight:400}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .meta{color:var(--muted);font-size:12px;line-height:16px}
 
 /* Header */
@@ -71,7 +75,7 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 .chart .ln{fill:none;stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke;stroke-linejoin:round}
 .chart .ax{position:absolute;right:-32px;width:24px;text-align:right;transform:translateY(-50%)}
 .chart .head{position:absolute;right:-4px;width:8px;height:8px;border-radius:4px;background:var(--accent);
-  box-shadow:0 0 0 3px var(--card);transform:translateY(-50%);transition:top .3s var(--ease)}
+  top:0;box-shadow:0 0 0 3px var(--card);transform:translateY(calc(var(--y,0px) - 50%));transition:transform .3s var(--ease)}
 
 /* Stats */
 .stats{flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
@@ -119,9 +123,9 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 .key .i{color:var(--text-2)}
 .key .n{font-size:20px;line-height:24px;font-weight:500}
 .key .cap{font-size:13px;line-height:16px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.key .led{position:absolute;top:12px;right:12px;width:6px;height:6px;border-radius:3px;background:#2e2e31;transition:background-color .18s var(--ease)}
+.key .led{position:absolute;top:12px;right:12px;width:6px;height:6px;border-radius:3px;background:var(--led-off);transition:background-color .18s var(--ease)}
 .key.on .led{background:var(--accent)}
-.key.err{background:#3a1d1f}
+.key.err{background:var(--danger-surface)}
 
 /* Windows */
 .wins{height:0;min-height:100%;display:flex;flex-direction:column;gap:8px;padding:16px 8px 8px}
@@ -134,7 +138,7 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
   background:transparent;color:inherit;font:inherit;text-align:left;border-radius:8px}
 .x{width:40px;height:40px;flex:none;border:0;border-radius:8px;background:transparent;color:var(--muted);
   display:grid;place-items:center;transition:background-color .15s var(--ease),color .15s var(--ease)}
-.x:active{background:#3a1d1f;color:var(--bad)}
+.x:active{background:var(--danger-surface);color:var(--bad)}
 .row.active{background:var(--raised);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
 .row .ws{width:16px;flex:none;color:var(--muted);font-size:12px}
 .row .cls{flex:none;font-weight:500;max-width:40%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -145,7 +149,7 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* Key editor */
-.scrim{position:fixed;inset:0;background:rgba(8,8,9,.6);display:flex;justify-content:center;align-items:flex-start;
+.scrim{position:fixed;inset:0;background:var(--scrim);display:flex;justify-content:center;align-items:flex-start;
   padding:12px;z-index:10;opacity:0;pointer-events:none;transition:opacity .18s var(--ease)}
 .scrim.open{opacity:1;pointer-events:auto}
 .sheet{width:min(560px,100%);max-height:calc(100dvh - 24px);overflow-y:auto;background:var(--card);
@@ -162,7 +166,7 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 .field{display:flex;flex-direction:column;gap:8px}
 .field input{height:44px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--raised);
   color:var(--text);font:inherit;caret-color:var(--accent)}
-.field input::placeholder{color:var(--muted)}
+.field input::placeholder{color:var(--text-2)}
 .field input:focus{outline:none;border-color:var(--accent)}
 .field .meta{margin-top:-4px}
 .icons{display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:4px;max-height:100px;overflow-y:auto}
@@ -179,28 +183,37 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 .tbtn.danger{color:var(--bad);padding:0 12px}
 .tbtn.primary{background:var(--text);color:var(--bg);font-weight:500;box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
 .tbtn.primary:active{background:var(--text-2)}
-.tbtn.quiet{height:36px;padding:0 12px;font-size:13px}
-.key.holding{transform:scale(.97);background:#2a2a2d}
+.tbtn.quiet{height:40px;padding:0 12px;font-size:13px}
+.tbtn:disabled{opacity:.5}
+.sheet-head .actions{display:flex;align-items:center;gap:4px}
+.iconbtn{width:40px;height:40px;border:0;border-radius:10px;background:transparent;color:var(--text-2);display:grid;place-items:center;
+  transition:background-color .15s var(--ease)}
+.iconbtn:active{background:var(--raised)}
+.iconbtn:disabled{opacity:.35}
+.key.holding{transform:scale(.97);background:var(--press)}
 .key.lifted{z-index:5;transition:none;box-shadow:0 12px 32px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.08)}
 .key.drop{border-color:var(--accent)}
 .keys{touch-action:none}
-.page-add{height:32px;padding:0 8px;margin-left:-8px;border:0;border-radius:8px;background:transparent;
+.page-add{height:40px;padding:0 12px;margin:-4px 0 -4px -12px;display:flex;align-items:center;gap:8px;border:0;border-radius:8px;background:transparent;
   color:var(--accent);font:inherit;font-size:13px;transition:background-color .15s var(--ease)}
 .page-add:active{background:var(--raised)}
 [hidden]{display:none!important}
 
 /* mull */
-body[data-view=mull] .deck-only,body:not([data-view=mull]) .mull-only,body[data-view=mull] #page,body[data-view=mull] #pageAdd{display:none!important}
-.mull-btn{width:36px;height:36px;padding:0;border:1px solid var(--line);border-radius:10px;background:var(--raised);
+body[data-view=mull] .deck-only,body:not([data-view=mull]) .mull-only,body[data-view=mull] #page,body[data-view=mull] #pageAdd,
+body:not([data-view=mull]) #backBtn{display:none!important}
+.page-add .i{width:16px;height:16px}
+.mull-btn{width:40px;height:40px;padding:0;border:1px solid var(--line);border-radius:10px;background:var(--raised);
   display:grid;place-items:center;transition:border-color .15s var(--ease),transform .12s var(--ease)}
-.mull-btn img{width:26px;height:26px;object-fit:contain}
+.mull-btn img{width:28px;height:28px;object-fit:contain}
 .mull-btn:active{transform:scale(.96)}
 .mull-btn[aria-pressed=true]{border-color:var(--accent)}
 .mullpage{grid-column:1/-1;grid-row:2/4;display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:12px;min-height:0}
 .mull-card{display:flex;flex-direction:column;gap:16px;min-height:0}
 .mull-head{display:flex;align-items:center;gap:12px}
-.mull-head img{width:48px;height:48px;object-fit:contain;flex:none}
-.mull-card h2,.mull-head h2{font-size:16px;line-height:24px;font-weight:500}
+.mull-head img{width:72px;height:auto;object-fit:contain;flex:none}
+.mull-head h2{font-size:16px;line-height:24px;font-weight:500}
+.mull-card > .label{display:block}
 .mull-head .grow{flex:1}
 .sel{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:10px;background:var(--deep);border:1px solid var(--line)}
 .sel-text{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;line-height:20px;min-height:20px}
@@ -208,28 +221,29 @@ body[data-view=mull] .deck-only,body:not([data-view=mull]) .mull-only,body[data-
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{height:40px;padding:0 16px;border:1px solid var(--line);border-radius:10px;background:var(--raised);color:var(--text);font:inherit;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06);transition:background-color .15s var(--ease),transform .12s var(--ease)}
-.chip:active{transform:scale(.97);background:#2a2a2d}
+.chip:active{transform:scale(.97);background:var(--press)}
 .chip:disabled,.instr button:disabled{opacity:.5}
 .instr{display:flex;gap:8px}
 .instr input{flex:1;min-width:0;height:44px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--raised);
   color:var(--text);font:inherit;caret-color:var(--accent)}
-.instr input::placeholder{color:var(--muted)}
+.instr input::placeholder{color:var(--text-2)}
 .instr input:focus{outline:none;border-color:var(--accent)}
 .result{display:flex;flex-direction:column;gap:8px;min-height:0;flex:1}
 .result-head{display:flex;align-items:center;justify-content:space-between}
-.result-text{flex:1;min-height:0;overflow-y:auto;line-height:20px;padding:12px;border-radius:10px;background:var(--deep);
+.result-text{flex:1;min-height:60px;overflow-y:auto;line-height:20px;padding:12px;border-radius:10px;background:var(--deep);
   border:1px solid var(--line);user-select:text;white-space:pre-wrap}
-.mull-error{color:var(--bad);font-size:13px;min-height:20px;margin-top:auto}
+.result-text.empty{color:var(--muted)}
+.mull-error{color:var(--bad);font-size:13px;min-height:20px;margin-top:-8px}
 .mull-side{display:flex;flex-direction:column;gap:12px;min-height:0}
-.dictate{flex:1;align-items:center;text-align:center;justify-content:center}
-.dictate img{width:120px;height:auto}
-.dictate .meta{max-width:30ch;margin-top:-8px}
-.talk{width:100%;height:72px;border:1px solid var(--line);border-radius:12px;background:var(--raised);color:var(--text);font:inherit;
+.dictate{flex:1}
+.talk{width:100%;flex:1;min-height:56px;border:1px solid var(--line);border-radius:12px;background:var(--raised);color:var(--text);font:inherit;
   font-weight:500;touch-action:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 -3px 0 rgba(0,0,0,.35);
   transition:background-color .15s var(--ease),border-color .15s var(--ease),transform .12s var(--ease)}
-.talk.listening{background:#3a2a1f;border-color:var(--accent);transform:translateY(1px)}
+.talk.listening{background:var(--listen-surface);border-color:var(--accent);transform:translateY(1px)}
 .talk:disabled{opacity:.5}
-.backends{list-style:none;padding:0;display:flex;flex-direction:column;gap:8px}
+.mull-side > .card:last-child{flex:none;gap:8px}
+.backends{list-style:none;padding:0;display:flex;flex-direction:column;gap:4px}
+.backends li{line-height:24px}
 .backends li{display:flex;align-items:center;gap:10px}
 .backends .dot{background:var(--muted)}
 .backends li.on .dot{background:var(--good)}
@@ -248,8 +262,10 @@ body[data-view=mull] .deck-only,body:not([data-view=mull]) .mull-only,body[data-
   body{overflow:auto}
   .grid{height:auto;grid-template-columns:1fr;grid-template-rows:auto}
   .cpu{flex:none;height:240px}
-  .keys{flex:none;height:200px}
-  .wins{flex:none;max-height:320px}
+  .wins{height:auto;min-height:0;max-height:320px}
+  .mullpage,.mull-install{grid-row:auto;grid-template-columns:1fr}
+  .result-text{min-height:120px}
+  .talk{min-height:96px}
 }
 @media (max-height:540px){
   .grid,.col{gap:8px}
@@ -268,14 +284,20 @@ body[data-view=mull] .deck-only,body:not([data-view=mull]) .mull-only,body[data-
   .key .n{font-size:16px;line-height:20px}
   .key .led{top:8px;right:10px}
   .wins{padding:12px 4px 4px}
+  .mull-card{gap:12px}
+  .mull-head img{width:56px}
+  .sel{padding:8px 12px;gap:4px}
+  .sel-text{-webkit-line-clamp:2}
+  .mullpage{gap:8px}
+  .mull-side{gap:8px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
-<div class="grid">
+<main class="grid">
   <header>
-    <div class="host"><b id="host">—</b><span class="meta" id="uptime"></span><span class="meta page" id="page"></span><button type="button" class="page-add" id="pageAdd" hidden></button></div>
+    <div class="host"><b id="host">—</b><span class="meta" id="uptime"></span><span class="meta page" id="page"></span><button type="button" class="page-add" id="pageAdd" hidden></button><button type="button" class="page-add" id="backBtn"><span class="i" style="--src:url(icons/arrow-left.svg)"></span>Back to deck</button></div>
     <div class="clock">
       <button type="button" class="mull-btn" id="mullBtn" aria-label="mull" aria-pressed="false" hidden><img src="mull/mascot.png" alt=""></button>
       <div class="link" id="link"><span class="dot"></span><span class="meta" id="linkText">Linked</span></div>
@@ -287,7 +309,7 @@ body[data-view=mull] .deck-only,body:not([data-view=mull]) .mull-only,body[data-
   <div class="col deck-only">
   <section class="card cpu">
     <div class="cpu-head">
-      <span class="label">Processor <span class="meta">· last 2 minutes</span></span>
+      <h2 class="label">Processor <span class="meta">· last 2 minutes</span></h2>
       <div><span class="figure num" id="cpu">0<small>%</small></span><span class="cpu-temp num" id="cpuTemp"></span></div>
     </div>
     <div class="chart" id="chart">
@@ -300,20 +322,20 @@ body[data-view=mull] .deck-only,body:not([data-view=mull]) .mull-only,body[data-
       <span class="ax meta num" style="top:0">100</span>
       <span class="ax meta num" style="top:50%">50</span>
       <span class="ax meta num" style="top:100%">0</span>
-      <span class="head" id="head" style="top:100%"></span>
+      <span class="head" id="head"></span>
     </div>
   </section>
 
   <section class="stats">
-    <div class="card stat"><span class="label">Memory</span><span class="v num" id="mem">—</span><span class="meta num" id="memSub"></span></div>
-    <div class="card stat"><span class="label">Graphics</span><span class="v num" id="gpu">—</span><span class="meta num" id="gpuSub"></span></div>
-    <div class="card stat"><span class="label">Battery</span><span class="v num" id="bat">—</span><span class="meta" id="batSub"></span></div>
-    <div class="card stat"><span class="label">Network</span><span class="v num" id="down">—</span><span class="meta num" id="up"></span></div>
+    <div class="card stat"><h2 class="label">Memory</h2><span class="v num" id="mem">—</span><span class="meta num" id="memSub"></span></div>
+    <div class="card stat"><h2 class="label">Graphics</h2><span class="v num" id="gpu">—</span><span class="meta num" id="gpuSub"></span></div>
+    <div class="card stat"><h2 class="label">Battery</h2><span class="v num" id="bat">—</span><span class="meta" id="batSub"></span></div>
+    <div class="card stat"><h2 class="label">Network</h2><span class="v num" id="down">—</span><span class="meta num" id="up"></span></div>
   </section>
 
   </div>
 
-  <section class="card np idle deck-only" id="np">
+  <section class="card np idle deck-only" id="np" aria-label="Now playing">
     <div class="np-top">
       <div class="art" id="art"><span class="i" style="--src:url(icons/music.svg);width:32px;height:32px"></span></div>
       <div class="np-text">
@@ -340,41 +362,41 @@ body[data-view=mull] .deck-only,body:not([data-view=mull]) .mull-only,body[data-
     </div>
   </section>
 
-  <section class="card keys deck-only" id="keys"></section>
+  <section class="card keys deck-only" id="keys" aria-label="Keys"></section>
 
   <section class="card wins deck-only">
-    <div class="wins-head"><span class="label">Windows</span><span class="meta num" id="winCount"></span></div>
+    <div class="wins-head"><h2 class="label">Windows</h2><span class="meta num" id="winCount"></span></div>
     <div class="list" id="list"></div>
   </section>
 
   <section class="mullpage mull-only" id="mullReady" hidden>
     <div class="card mull-card">
       <div class="mull-head">
-        <img src="mull/mascot-rewrite.png" alt="">
         <div class="grow"><h2>Rewrite</h2><p class="meta">Highlight text on the PC, then choose how to rewrite it</p></div>
-        <button type="button" class="tbtn quiet" data-back>Back to deck</button>
       </div>
       <div class="sel"><span class="label">Highlighted on the PC</span><p class="sel-text empty" id="mullSel">Nothing highlighted</p></div>
       <div class="chips" id="mullPresets"></div>
       <form class="instr" id="mullForm">
+        <label class="sr-only" for="mullInstr">Instruction</label>
         <input id="mullInstr" maxlength="300" autocomplete="off" placeholder="Or describe the change, like make it sound less angry">
         <button type="submit" class="tbtn primary" id="mullGo">Rewrite</button>
       </form>
-      <div class="result" id="mullResult" hidden>
-        <div class="result-head"><span class="label">Result, copied to the PC clipboard</span><button type="button" class="tbtn quiet" id="mullType">Type it</button></div>
-        <p class="result-text" id="mullOut"></p>
+      <div class="result" id="mullResult">
+        <div class="result-head"><span class="label" id="mullResultLabel">Result</span><button type="button" class="tbtn quiet" id="mullType" disabled>Type it</button></div>
+        <p class="result-text empty" id="mullOut" aria-live="polite">The rewritten text appears here and is copied to the PC clipboard</p>
       </div>
       <p class="mull-error" id="mullError" role="alert"></p>
     </div>
     <div class="mull-side">
       <div class="card mull-card dictate">
-        <img src="mull/mascot-dictate.png" alt="">
-        <h2>Dictate</h2>
-        <p class="meta">Hold to talk. mull types the words into the focused window on the PC</p>
+        <div class="mull-head">
+          <img src="mull/mascot-dictate.png" alt="">
+          <div class="grow"><h2>Dictate</h2><p class="meta">Hold to talk. mull types the words into the focused window on the PC</p></div>
+        </div>
         <button type="button" class="talk" id="talk">Hold to talk</button>
       </div>
       <div class="card mull-card">
-        <span class="label">Backends</span>
+        <h2 class="label">Backends</h2>
         <ul class="backends" id="mullBackends"></ul>
       </div>
     </div>
@@ -397,18 +419,21 @@ mkdir -p ~/.config/mull && cp .env.example ~/.config/mull/.env</pre></li>
       <div class="row-actions">
         <button type="button" class="tbtn primary" id="mullCopy">Copy steps to the PC clipboard</button>
         <button type="button" class="tbtn" id="mullCheck">Check again</button>
-        <button type="button" class="tbtn" data-back>Back to deck</button>
       </div>
       <p class="meta">More: <a href="https://github.com/silky-x0/mull" target="_blank" rel="noopener">github.com/silky-x0/mull</a></p>
     </div>
   </section>
-</div>
+</main>
 
 <div class="scrim" id="scrim">
   <form class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" novalidate>
     <div class="sheet-head">
       <h2 id="sheetTitle">Edit key</h2>
-      <button type="button" class="tbtn quiet" id="addAfter">Add key after</button>
+      <div class="actions">
+        <button type="button" class="iconbtn" id="moveLeft" aria-label="Move key left"><span class="i" style="--src:url(icons/chevron-left.svg)"></span></button>
+        <button type="button" class="iconbtn" id="moveRight" aria-label="Move key right"><span class="i" style="--src:url(icons/chevron-right.svg)"></span></button>
+        <button type="button" class="tbtn quiet" id="addAfter">Add key after</button>
+      </div>
     </div>
     <div class="seg" role="group" aria-label="Key type">
       <button type="button" data-type="workspace">Workspace</button>
@@ -508,6 +533,10 @@ document.addEventListener("pointerup", endHold);
 document.addEventListener("pointercancel", endHold);
 $("keys").addEventListener("pointerleave", () => { if (!drag) { clearTimeout(holdTimer); clearMarks("holding"); } });
 $("keys").addEventListener("contextmenu", e => e.preventDefault());
+$("keys").addEventListener("keydown", e => {
+  const k = e.target.closest(".key");
+  if (k && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) { e.preventDefault(); openEditor(k.dataset.run, "save", true); }
+});
 
 const findKey = id => [...keyConfig.default, ...Object.values(keyConfig.apps).flat()].find(k => k.id === id);
 let editId, editMode, editType, editIcon, iconNames;
@@ -531,7 +560,16 @@ function setIcon(name) {
   editIcon = name;
   document.querySelectorAll("#icons button").forEach(b => b.setAttribute("aria-pressed", b.dataset.icon === name));
 }
-async function openEditor(id, mode) {
+function neighborIds(id) {
+  for (const list of [keyConfig.default, ...Object.values(keyConfig.apps)]) {
+    const i = list.findIndex(k => k.id === id);
+    if (i >= 0) return [list[i - 1]?.id, list[i + 1]?.id];
+  }
+  return [];
+}
+let lastFocus = null, neighbors = [];
+async function openEditor(id, mode, byKeyboard = false) {
+  lastFocus = byKeyboard ? document.activeElement : null;
   if (!iconNames) {
     iconNames = await fetch("/api/icons").then(r => r.json()).catch(() => []);
     $("icons").replaceChildren(...iconNames.map(n => {
@@ -544,7 +582,10 @@ async function openEditor(id, mode) {
   const k = mode === "save" ? findKey(id) : null;
   editId = id; editMode = mode;
   $("sheetTitle").textContent = mode === "save" ? "Edit key" : mode === "page" ? `First key for ${id}` : "New key";
-  $("addAfter").hidden = $("del").hidden = mode !== "save";
+  $("addAfter").hidden = $("del").hidden = $("moveLeft").hidden = $("moveRight").hidden = mode !== "save";
+  neighbors = mode === "save" ? neighborIds(id) : [];
+  $("moveLeft").disabled = !neighbors[0];
+  $("moveRight").disabled = !neighbors[1];
   $("fLabel").value = k?.label || "";
   $("fValue").value = k?.value || "";
   $("sheetError").textContent = "";
@@ -552,8 +593,28 @@ async function openEditor(id, mode) {
   setType(k?.type || "shortcut");
   setIcon(k?.icon || "");
   $("scrim").classList.add("open");
+  // Focusing an input on touch pops the keyboard, so only move focus for keyboard users.
+  if (byKeyboard) document.querySelector(".seg button[aria-pressed=true]")?.focus();
 }
-const closeEditor = () => { $("scrim").classList.remove("open"); document.activeElement?.blur(); };
+const closeEditor = () => {
+  $("scrim").classList.remove("open");
+  document.activeElement?.blur();
+  lastFocus?.focus();
+  lastFocus = null;
+};
+const focusables = () => [...$("sheet").querySelectorAll("button:not([hidden]):not(:disabled),input:not([hidden])")]
+  .filter(el => el.offsetParent !== null);
+document.addEventListener("keydown", e => {
+  if (!$("scrim").classList.contains("open")) return;
+  if (e.key === "Escape") { e.preventDefault(); closeEditor(); return; }
+  if (e.key !== "Tab") return;
+  const f = focusables(), first = f[0], last = f.at(-1);
+  if (!$("sheet").contains(document.activeElement)) { e.preventDefault(); first?.focus(); }
+  else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+$("moveLeft").addEventListener("click", () => { editMode = "save"; sendEdit("move", {to: neighbors[0]}); });
+$("moveRight").addEventListener("click", () => { editMode = "save"; sendEdit("move", {to: neighbors[1]}); });
 document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => setType(b.dataset.type)));
 $("icons").addEventListener("click", e => { const b = e.target.closest("[data-icon]"); if (b) setIcon(b.dataset.icon === editIcon ? "" : b.dataset.icon); });
 $("cancel").addEventListener("click", closeEditor);
@@ -613,7 +674,7 @@ function drawChart() {
   }
   $("line").setAttribute("d", d);
   $("area").setAttribute("d", `${d}L100,100L${pts[0][0]},100Z`);
-  $("head").style.top = `${100 - hist.at(-1)}%`;
+  $("head").style.setProperty("--y", `${$("chart").clientHeight * (1 - hist.at(-1) / 100)}px`);
 }
 
 function renderStats(s) {
@@ -679,8 +740,10 @@ function renderWindows(w) {
   w.windows.forEach(x => counts[x.workspace] = (counts[x.workspace] || 0) + 1);
   document.querySelectorAll("[data-ws]").forEach(k => {
     const n = +k.dataset.ws, c = counts[n] || 0;
-    k.classList.toggle("on", w.workspaces.includes(n));
+    const shown = w.workspaces.includes(n);
+    k.classList.toggle("on", shown);
     k.querySelector("[data-count]").textContent = c ? `${c} open` : "Empty";
+    k.setAttribute("aria-label", `Workspace ${n}, ${shown ? "on screen, " : ""}${c ? `${c} open` : "empty"}`);
   });
   const list = $("list");
   if (!w.windows.length) { list.innerHTML = `<p class="empty">No open windows</p>`; return; }
@@ -776,10 +839,12 @@ async function rewrite(body) {
   if (!r.ok) return $("mullError").textContent = await r.text();
   const {after} = await r.json();
   $("mullOut").textContent = after;
-  $("mullResult").hidden = false;
+  $("mullOut").classList.remove("empty");
+  $("mullResultLabel").textContent = "Result, copied to the PC clipboard";
+  $("mullType").disabled = false;
 }
 $("mullBtn").addEventListener("click", () => setView(view === "mull" ? "deck" : "mull"));
-document.querySelectorAll("[data-back]").forEach(b => b.addEventListener("click", () => setView("deck")));
+$("backBtn").addEventListener("click", () => setView("deck"));
 $("mullPresets").addEventListener("click", e => { const b = e.target.closest("[data-preset]"); if (b) rewrite({preset: b.dataset.preset}); });
 $("mullForm").addEventListener("submit", e => { e.preventDefault(); const t = $("mullInstr").value.trim(); if (t) rewrite({instruction: t}); });
 $("mullType").addEventListener("click", () => mullPost("type"));
@@ -789,14 +854,16 @@ $("mullCopy").addEventListener("click", async () => {
   $("mullCopy").textContent = r?.ok ? "Copied, paste it in a terminal on the PC" : "Couldn't copy";
 });
 let talking = false;
-$("talk").addEventListener("pointerdown", e => {
-  if ($("talk").disabled) return;
+const startTalk = () => {
+  if ($("talk").disabled || talking) return;
   talking = true;
-  $("talk").setPointerCapture?.(e.pointerId);
   $("talk").classList.add("listening");
   $("talk").textContent = "Listening… release to type";
   mullPost("dictate-start");
-});
+};
+$("talk").addEventListener("pointerdown", e => { $("talk").setPointerCapture?.(e.pointerId); startTalk(); });
+$("talk").addEventListener("keydown", e => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); startTalk(); } });
+$("talk").addEventListener("keyup", e => { if (e.key === " " || e.key === "Enter") stopTalk(); });
 const stopTalk = () => {
   if (!talking) return;
   talking = false;

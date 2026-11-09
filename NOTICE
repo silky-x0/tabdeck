@@ -6,10 +6,9 @@ Lucide icons (static/icons/*.svg)
   as part of Feather (MIT). All other copyright (c) for Lucide are held by
   Lucide Contributors 2022.
 
-Geist and Geist Mono fonts (static/fonts/*.woff2)
-  https://github.com/vercel/geist-font
-  SIL Open Font License 1.1, Copyright (c) 2023 Vercel, in collaboration with
-  basement.studio
+IBM Plex Sans and IBM Plex Mono fonts (static/fonts/*.woff2)
+  https://github.com/IBM/plex
+  SIL Open Font License 1.1, Copyright (c) IBM Corp.
 
 mull mascot (static/mull/*.png)
   https://github.com/silky-x0/mull

@@ -198,7 +198,9 @@ Override any of them under `[hardware]`. A card shows "Not available" or "No bat
 
 ## mull
 
-[mull](https://github.com/silky-x0/mull) is an AI helper for the Linux desktop that rewrites highlighted text and types what you say. tabdeck puts its mascot in the header. Tap it to open the mull page:
+**[mull](https://github.com/silky-x0/mull)** is a bring-your-own-AI helper for the Linux desktop, by the same author. It rewrites highlighted text and types what you say. tabdeck puts its mascot in the header. Tap it to open the mull page:
+
+![The mull page in tabdeck: the PC's highlighted text, rewrite presets, the result, push-to-talk dictation and backend status](docs/mull.png)
 
 - **Rewrite.** Shows what's highlighted on the PC, live. Tap a preset (Fix, Shorten, Polite, Casual, Translate, plus your own `MULL_PRESET_*` presets) or type an instruction. The result appears on the tablet and is copied to the PC clipboard. *Type it* types the result into the focused window.
 - **Dictate.** Hold the button and talk. It runs `mull-dictate`, which types the words into the focused window.
@@ -210,6 +212,8 @@ If mull isn't installed, the page shows how to install it, with a button that co
 [integrations]
 mull = false
 ```
+
+> **mull is in early development.** This page follows mull's current command line (`mull presets`, `mull rewrite`, `mull-dictate`), so expect it to change as mull grows. New mull presets show up automatically. For setup, backends and hotkeys, see the [mull README](https://github.com/silky-x0/mull#readme).
 
 The tablet can't send arbitrary text to type or commands to run. It sends a preset name or an instruction, which the server passes to `mull` as an argument without a shell, and *Type it* only types the server's last result.
 
