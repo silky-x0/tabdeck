@@ -7,7 +7,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>Command Center</title>
+<title>tabdeck</title>
 <style>
 @font-face{font-family:Geist;src:url(fonts/geist.woff2) format("woff2");font-weight:100 900}
 @font-face{font-family:"Geist Mono";src:url(fonts/geist-mono.woff2) format("woff2");font-weight:100 900}
@@ -124,7 +124,7 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 .key.err{background:#3a1d1f}
 
 /* Windows */
-.wins{min-height:0;display:flex;flex-direction:column;gap:8px;padding:16px 8px 8px}
+.wins{height:0;min-height:100%;display:flex;flex-direction:column;gap:8px;padding:16px 8px 8px}
 .wins-head{display:flex;justify-content:space-between;padding:0 8px}
 .list{overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:2px}
 .list::-webkit-scrollbar{display:none}
@@ -181,6 +181,12 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 .tbtn.primary:active{background:var(--text-2)}
 .tbtn.quiet{height:36px;padding:0 12px;font-size:13px}
 .key.holding{transform:scale(.97);background:#2a2a2d}
+.key.lifted{z-index:5;transition:none;box-shadow:0 12px 32px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.08)}
+.key.drop{border-color:var(--accent)}
+.keys{touch-action:none}
+.page-add{height:32px;padding:0 8px;margin-left:-8px;border:0;border-radius:8px;background:transparent;
+  color:var(--accent);font:inherit;font-size:13px;transition:background-color .15s var(--ease)}
+.page-add:active{background:var(--raised)}
 [hidden]{display:none!important}
 
 @media (max-aspect-ratio:1/1){
@@ -214,7 +220,7 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 <body>
 <div class="grid">
   <header>
-    <div class="host"><b id="host">—</b><span class="meta" id="uptime"></span><span class="meta page" id="page"></span></div>
+    <div class="host"><b id="host">—</b><span class="meta" id="uptime"></span><span class="meta page" id="page"></span><button type="button" class="page-add" id="pageAdd" hidden></button></div>
     <div class="clock">
       <div class="link" id="link"><span class="dot"></span><span class="meta" id="linkText">Linked</span></div>
       <span class="meta" id="date"></span>
@@ -347,15 +353,48 @@ async function post(url, el) {
   if (!r || !r.ok) { el.classList.add("err"); setTimeout(() => el.classList.remove("err"), 600); }
   else setTimeout(pollAll, 250);
 }
-let held = null, holdTimer;
+// Long-press lifts a key: release in place to edit it, or drag onto another key on the same page to move it.
+let held = null, holdTimer, drag = null;
+const sameList = (a, b) => a.replace(/k\d+$/, "") === b.replace(/k\d+$/, "");
+const clearMarks = cls => document.querySelectorAll(`.key.${cls}`).forEach(k => k.classList.remove(cls));
 $("keys").addEventListener("pointerdown", e => {
   const k = e.target.closest(".key");
   if (!k) return;
-  holdTimer = setTimeout(() => { held = k; k.classList.remove("holding"); openEditor(k.dataset.run, "save"); }, 550);
   k.classList.add("holding");
+  const start = {x: e.clientX, y: e.clientY};
+  holdTimer = setTimeout(() => {
+    held = k;
+    k.classList.replace("holding", "lifted");
+    drag = {key: k, start, moved: false, target: null};
+  }, 450);
 });
-const endHold = () => { clearTimeout(holdTimer); document.querySelectorAll(".key.holding").forEach(k => k.classList.remove("holding")); };
-["pointerup", "pointercancel", "pointerleave"].forEach(t => $("keys").addEventListener(t, endHold));
+document.addEventListener("pointermove", e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.start.x, dy = e.clientY - drag.start.y;
+  if (!drag.moved && Math.hypot(dx, dy) < 10) return;
+  drag.moved = true;
+  drag.key.style.transform = `translate(${dx}px, ${dy}px) scale(1.04)`;
+  const over = document.elementsFromPoint(e.clientX, e.clientY).map(el => el.closest(".key")).find(k => k && k !== drag.key);
+  clearMarks("drop");
+  drag.target = over && sameList(over.dataset.run, drag.key.dataset.run) ? over : null;
+  drag.target?.classList.add("drop");
+});
+function endHold(e) {
+  clearTimeout(holdTimer);
+  clearMarks("holding");
+  if (!drag) return;
+  const d = drag;
+  drag = null;
+  d.key.classList.remove("lifted");
+  d.key.style.transform = "";
+  clearMarks("drop");
+  if (e.type === "pointercancel") return;
+  if (!d.moved) openEditor(d.key.dataset.run, "save");
+  else if (d.target) { editId = d.key.dataset.run; editMode = "save"; sendEdit("move", {to: d.target.dataset.run}, d.key); }
+}
+document.addEventListener("pointerup", endHold);
+document.addEventListener("pointercancel", endHold);
+$("keys").addEventListener("pointerleave", () => { if (!drag) { clearTimeout(holdTimer); clearMarks("holding"); } });
 $("keys").addEventListener("contextmenu", e => e.preventDefault());
 
 const findKey = id => [...keyConfig.default, ...Object.values(keyConfig.apps).flat()].find(k => k.id === id);
@@ -392,7 +431,7 @@ async function openEditor(id, mode) {
   }
   const k = mode === "save" ? findKey(id) : null;
   editId = id; editMode = mode;
-  $("sheetTitle").textContent = mode === "save" ? "Edit key" : "New key";
+  $("sheetTitle").textContent = mode === "save" ? "Edit key" : mode === "page" ? `First key for ${id}` : "New key";
   $("addAfter").hidden = $("del").hidden = mode !== "save";
   $("fLabel").value = k?.label || "";
   $("fValue").value = k?.value || "";
@@ -408,10 +447,16 @@ $("icons").addEventListener("click", e => { const b = e.target.closest("[data-ic
 $("cancel").addEventListener("click", closeEditor);
 $("scrim").addEventListener("click", e => { if (e.target === $("scrim")) closeEditor(); });
 $("addAfter").addEventListener("click", () => openEditor(editId, "insert"));
-async function sendEdit(op, key) {
-  const r = await fetch(`/keys/${editId}`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({op, key})}).catch(() => null);
-  if (!r) { $("sheetError").textContent = "Can't reach the PC"; return; }
-  if (!r.ok) { $("sheetError").textContent = await r.text(); return; }
+$("pageAdd").addEventListener("click", () => openEditor($("pageAdd").dataset.cls, "page"));
+async function sendEdit(op, key, flashEl) {
+  const url = editMode === "page" ? `/pages/${encodeURIComponent(editId)}` : `/keys/${editId}`;
+  const r = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({op, key})}).catch(() => null);
+  const fail = msg => {
+    $("sheetError").textContent = msg;
+    if (flashEl) { flashEl.classList.add("err"); setTimeout(() => flashEl.classList.remove("err"), 600); }
+  };
+  if (!r) return fail("Can't reach the PC");
+  if (!r.ok) return fail(await r.text());
   keyConfig = await r.json();
   showPage(keyPage, true);
   closeEditor();
@@ -512,7 +557,11 @@ function progress() {
 
 function renderWindows(w) {
   const cls = (w.activeClass || "").toLowerCase();
-  showPage(keyConfig.apps[cls] ? cls : null);
+  const hasPage = keyConfig.apps[cls]?.length > 0;
+  showPage(hasPage ? cls : null);
+  $("pageAdd").hidden = !cls || hasPage;
+  $("pageAdd").dataset.cls = w.activeClass || "";
+  $("pageAdd").textContent = `Add keys for ${w.activeClass}`;
   $("winCount").textContent = w.windows.length;
   const counts = {};
   w.windows.forEach(x => counts[x.workspace] = (counts[x.workspace] || 0) + 1);
@@ -539,16 +588,15 @@ function renderWindows(w) {
 async function get(path, render) {
   try {
     const r = await fetch(path);
-    if (!r.ok) throw 0;
-    render(await r.json());
-    return true;
-  } catch { return false; }
+    if (r.ok) render(await r.json());
+    return r.status;
+  } catch { return 0; }
 }
 async function pollAll() {
-  const ok = await Promise.all([get("/api/stats", renderStats), get("/api/player", renderPlayer), get("/api/windows", renderWindows)]);
-  const live = ok.every(Boolean);
+  const st = await Promise.all([get("/api/stats", renderStats), get("/api/player", renderPlayer), get("/api/windows", renderWindows)]);
+  const live = st.every(s => s === 200);
   $("link").classList.toggle("off", !live);
-  $("linkText").textContent = live ? "Linked" : "Offline";
+  $("linkText").textContent = live ? "Linked" : st.includes(401) ? "Locked, run tablet on the PC" : "Offline";
 }
 
 // Browser chrome eats a quarter of the tablet's height, so the first tap goes fullscreen.

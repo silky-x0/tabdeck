@@ -29,12 +29,21 @@ tunnel() {
         adb -s "$1" reverse tcp:8765 "localfilesystem:$RUN/http.sock" >/dev/null
 }
 
+open_avnc() {
+    adb -s "$1" shell am start -a android.intent.action.VIEW -d 'vnc://127.0.0.1:5900' com.gaurav.avnc >/dev/null 2>&1
+}
+
+# A dropped Wi-Fi link can still report "device", and adb calls on it hang, so probe with a timeout.
+alive() {
+    timeout 6 adb -s "$1" shell true >/dev/null 2>&1
+}
+
 # Paired tablets advertise themselves over mDNS; stale entries linger, so try each until one connects.
 wifi_connect() {
     local addr
     for addr in $(adb mdns services | awk '/_adb-tls-connect/ {print $NF}' | sort -u); do
         timeout 5 adb connect "$addr" 2>/dev/null | grep -q '^connected\|already connected' &&
-            [[ "$(adb -s "$addr" get-state 2>/dev/null)" == device ]] && { echo "$addr"; return 0; }
+            alive "$addr" && { echo "$addr"; return 0; }
     done
     return 1
 }
@@ -78,10 +87,10 @@ watch)
     # Runs in the background in Wi-Fi mode: reconnect when the tablet drops, then restore the tunnels.
     while sleep 5; do
         serial=$(cat "$RUN/serial" 2>/dev/null) || exit 0
-        [[ "$(adb -s "$serial" get-state 2>/dev/null)" == device ]] &&
-            adb -s "$serial" reverse --list 2>/dev/null | grep -q 8765 && continue
+        alive "$serial" && timeout 6 adb -s "$serial" reverse --list 2>/dev/null | grep -q 8765 && continue
+        timeout 5 adb disconnect "$serial" >/dev/null 2>&1
         new=$(wifi_connect) || continue
-        tunnel "$new" && echo "$new" > "$RUN/serial"
+        tunnel "$new" && echo "$new" > "$RUN/serial" && open_avnc "$new"
     done
     ;;
 install)
@@ -148,7 +157,12 @@ pgrep -f '^python3 tabdeck.py' >/dev/null || (cd "$DIR" && setsid python3 tabdec
 sleep 1
 
 tunnel "$ANDROID_SERIAL" || { echo "Could not set up the tunnel to the tablet"; exit 1; }
-adb shell am start -a android.intent.action.VIEW -d 'vnc://127.0.0.1:5900' com.gaurav.avnc >/dev/null 2>&1
+# Opening the page with the secret stores it as a cookie in the tablet's browser, which unlocks the API.
+token="${XDG_CONFIG_HOME:-$HOME/.config}/tabdeck/token"
+for _ in {1..10}; do [[ -s "$token" ]] && break; sleep 0.5; done
+adb shell am start -a android.intent.action.VIEW -d "http://127.0.0.1:8765/?t=$(cat "$token")" >/dev/null 2>&1
+sleep 1
+open_avnc "$ANDROID_SERIAL"
 
 if [[ "${1:-}" == wifi ]]; then
     echo "$ANDROID_SERIAL" > "$RUN/serial"

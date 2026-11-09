@@ -12,7 +12,7 @@ Turn an Android tablet into a second monitor and a touch command center for a Hy
   - workspace keys with live indicators
   - app launcher keys, and per-app key pages that follow the focused window
   - a window list where you can tap to focus a window or close it
-  - long-press any key to edit it on the tablet
+  - long-press any key to edit it, drag it to reorder, or add a key page for the focused app
 
 Everything runs on your own PC and reaches the tablet through `adb reverse`. There's no cloud, no account and no app store install.
 
@@ -41,7 +41,7 @@ ln -s ~/tabdeck/tablet ~/.local/bin/tablet
 
 1. Plug in the tablet and accept the USB debugging prompt.
 2. Run `tablet`.
-3. On the tablet, open `http://127.0.0.1:8765` and choose *Install app* from the browser menu.
+3. `tablet` opens the command center on the tablet. Choose *Install app* from the browser menu to keep it as an app.
 
 Every time after that, plug in the tablet, run `tablet` and open the app. To tear everything down, run `tablet stop`.
 
@@ -89,6 +89,7 @@ USB is still the more reliable option, and the lower-latency one.
 | --- | --- |
 | `tablet` | Creates a headless Hyprland output sized to the tablet, starts `wayvnc` and the server on Unix sockets, and tunnels them to the tablet's ports 5900 and 8765 with `adb reverse` |
 | `config.toml` | Keys, display placement, and hardware overrides |
+| `~/.config/tabdeck/token` | The secret that unlocks the API, created on first run |
 | `tablet install` | Writes `/etc/udev/rules.d/70-tabdeck.rules` and `~/.config/systemd/user/tabdeck.service` |
 | `tabdeck.py` | Standard-library HTTP server. It serves the page, a JSON API with stats, player and window data, the actions from your config, and the key editor |
 | `tests/` | `python3 -m unittest discover -s tests`, also run by GitHub Actions |
@@ -144,7 +145,7 @@ shortcut = "alt+Left"
 
 To find a window's class, run `hyprctl activewindow` and look at `class`.
 
-**Editing from the tablet.** Long-press a key to change its type, label, icon or value, delete it, or add a key after it. Changes are saved to `~/.config/tabdeck/config.toml` and apply immediately. The first edit creates that file from the active config, and comments aren't kept.
+**Editing from the tablet.** Long-press a key and release to change its type, label, icon or value, delete it, or add a key after it. Long-press and drag onto another key on the same page to move it. When the focused app has no page, the header shows *Add keys for <app>*, which starts one. Changes are saved to `~/.config/tabdeck/config.toml` and apply immediately. The first edit creates that file from the active config, and comments aren't kept.
 
 Changing a key's *command* from the tablet is off by default, because it would let anything that can reach the tablet's localhost run commands on your PC. Labels, icons, shortcuts and workspaces are always editable. To allow command editing:
 
@@ -166,11 +167,12 @@ Override any of them under `[hardware]`. A card shows "Not available" or "No bat
 ## Security
 
 - **No network ports.** The server and wayvnc listen on Unix sockets in `$XDG_RUNTIME_DIR/tabdeck`, a directory only your user can open. Other users on the PC, and web pages in a PC browser, can't reach them. `adb reverse` exposes them on the tablet's localhost.
+- **A secret unlocks the API.** On first run the server creates `~/.config/tabdeck/token`, readable only by you. `tablet` opens the page with it, and the server stores it as an `HttpOnly`, `SameSite=Strict` cookie in the tablet's browser. Every API call needs that cookie, so other apps on the tablet can't use the command center. If the page shows *Locked*, run `tablet` again.
 - **Only the command center page is trusted.** Requests must carry `Host: 127.0.0.1:8765`, and writes must come from that origin, which blocks DNS rebinding and cross-site requests from web pages opened on the tablet.
 - **The client never sends commands.** It sends a key id, and the server runs the matching command from your config. Window addresses, shortcuts, icons and every editor field are validated on the server.
 - **Command editing is opt-in.** See [Editing from the tablet](#configuration).
 
-What's not protected: apps installed on the tablet can reach its localhost like the browser does, so they can press keys and edit labels or shortcuts. Only install apps you trust on a tablet you connect this way, and leave `edit.commands` off unless you need it.
+What's not protected: the display stream on the tablet's port 5900 has no password, so an app installed on the tablet could connect to it and see or control your desktop. Only install apps you trust on a tablet you connect this way. VNC authentication is on the roadmap.
 
 ## Limitations
 
@@ -184,6 +186,7 @@ VNC sends a single pointer, so touch on the display works as mouse input. Multi-
 ## Roadmap
 
 - AUR package
+- Password for the display stream (wayvnc authentication)
 
 ## Credits
 

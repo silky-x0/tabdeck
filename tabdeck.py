@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import hmac
 import json
 import mimetypes
+import secrets
 import os
 import re
 import shlex
@@ -12,9 +14,10 @@ import sys
 import threading
 import time
 import tomllib
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import unquote, urlparse, urlsplit
+from urllib.parse import parse_qs, unquote, urlparse, urlsplit
 
 PORT = 8765
 ROOT = Path(__file__).resolve().parent
@@ -25,6 +28,7 @@ SOCKET = RUNDIR / "http.sock"
 MONITOR = "TAB"
 ADDR = re.compile(r"0x[0-9a-f]{1,16}")
 ICON_NAME = re.compile(r"[a-z0-9-]{1,64}")
+APP_CLASS = re.compile(r"[A-Za-z0-9._-]{1,64}")
 # The page is only ever loaded from the adb tunnel; anything else is another site trying to reach us.
 ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
 HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
@@ -64,6 +68,21 @@ def shortcut_cmd(spec):
 
 def user_config_path():
     return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "tabdeck" / "config.toml"
+
+
+def token_path():
+    return user_config_path().parent / "token"
+
+
+def load_token():
+    """A per-machine secret the tablet's browser holds as a cookie; other tablet apps can't read it."""
+    path = token_path()
+    if not path.is_file():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(secrets.token_urlsafe(32))
+    return path.read_text().strip()
 
 
 def config_error(cfg):
@@ -265,7 +284,6 @@ def key_from_client(data, old, cfg):
 
 def edit_key(kid, op, data):
     """Applies one edit from the tablet, saves the user config and rebuilds the keys."""
-    global CFG, ACTIONS, KEYS
     with CFG_LOCK:
         cfg = json.loads(json.dumps(CFG))
         lst, i = key_list(cfg, kid)
@@ -273,21 +291,49 @@ def edit_key(kid, op, data):
             raise EditError("Unknown key")
         if op == "delete":
             del lst[i]
+            for name, app in list(cfg.get("apps", {}).items()):
+                if not app.get("keys"):
+                    del cfg["apps"][name]
+        elif op == "move":
+            to_lst, j = key_list(cfg, str(data.get("to", "")))
+            if to_lst is not lst:
+                raise EditError("Keys can only move within the same page")
+            lst.insert(j, lst.pop(i))
         elif op == "save":
             lst[i] = key_from_client(data, lst[i], cfg)
         elif op == "insert":
             lst.insert(i + 1, key_from_client(data, None, cfg))
         else:
             raise EditError("Unknown operation")
-        if err := config_error(cfg):
-            raise EditError(err)
-        path = user_config_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(dump_toml(cfg))
-        tmp.replace(path)
-        CFG = cfg
-        ACTIONS, KEYS = build_all(cfg)
+        save_config(cfg)
+
+
+def create_page(app_class, data):
+    """Starts a key page for an app class with its first key."""
+    if not APP_CLASS.fullmatch(app_class):
+        raise EditError("Unsupported window class")
+    name = app_class.lower()
+    with CFG_LOCK:
+        cfg = json.loads(json.dumps(CFG))
+        apps = cfg.setdefault("apps", {})
+        if apps.get(name, {}).get("keys"):
+            raise EditError("This app already has a page")
+        apps[name] = {"keys": [key_from_client(data, None, cfg)]}
+        save_config(cfg)
+
+
+def save_config(cfg):
+    """Validates, writes the user config atomically and rebuilds keys. Caller holds CFG_LOCK."""
+    global CFG, ACTIONS, KEYS
+    if err := config_error(cfg):
+        raise EditError(err)
+    path = user_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(dump_toml(cfg))
+    tmp.replace(path)
+    CFG = cfg
+    ACTIONS, KEYS = build_all(cfg)
 
 
 # --- hardware detection ---
@@ -492,7 +538,17 @@ def setup_display():
     print(f"{MONITOR}: {mode} at {pos}")
 
 
+TOKEN = None
+
+
 class Handler(BaseHTTPRequestHandler):
+    def _authed(self):
+        try:
+            c = SimpleCookie(self.headers.get("Cookie", "")).get("tabdeck")
+        except CookieError:
+            return False
+        return bool(c and TOKEN and hmac.compare_digest(c.value, TOKEN))
+
     def _trusted(self, write):
         if self.headers.get("Host") not in HOSTS:
             return False
@@ -510,10 +566,25 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, data):
         self._send(200, json.dumps(data).encode(), "application/json")
 
+    def _unlock(self, given):
+        if not (TOKEN and hmac.compare_digest(given, TOKEN)):
+            return False
+        self.send_response(303)
+        self.send_header("Location", "/")
+        self.send_header("Set-Cookie", f"tabdeck={TOKEN}; Path=/; Max-Age=34560000; HttpOnly; SameSite=Strict")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return True
+
     def do_GET(self):
         if not self._trusted(write=False):
             return self._send(403)
-        path = urlsplit(self.path).path
+        url = urlsplit(self.path)
+        path = url.path
+        if path == "/" and (t := parse_qs(url.query).get("t")) and self._unlock(t[0]):
+            return
+        if path.startswith("/api/") and not self._authed():
+            return self._send(401)
         if path == "/api/icons":
             return self._json(sorted(p.stem for p in ICONS.glob("*.svg")))
         if path == "/api/stats":
@@ -538,15 +609,20 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._trusted(write=True):
             return self._send(403)
+        if not self._authed():
+            return self._send(401)
         path = urlsplit(self.path).path
         verb, _, arg = path.strip("/").partition("/")
-        if verb == "keys":
+        if verb in ("keys", "pages"):
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 if self.headers.get("Content-Type") != "application/json" or not 0 < length <= 4096:
                     raise EditError("Expected a small JSON body")
                 body = json.loads(self.rfile.read(length))
-                edit_key(arg, body.get("op"), body.get("key") or {})
+                if verb == "pages":
+                    create_page(arg, body.get("key") or {})
+                else:
+                    edit_key(arg, body.get("op"), body.get("key") or {})
             except EditError as e:
                 return self._send(400, str(e).encode())
             except (ValueError, AttributeError):
@@ -576,6 +652,8 @@ class UnixHTTPServer(socketserver.ThreadingUnixStreamServer):
 
 
 def serve():
+    global TOKEN
+    TOKEN = load_token()
     # A socket in a 0700 runtime dir: only this user (and the adb tunnel it owns) can connect.
     RUNDIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     RUNDIR.chmod(0o700)

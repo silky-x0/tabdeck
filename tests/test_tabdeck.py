@@ -16,7 +16,9 @@ sys.path.insert(0, str(ROOT))
 
 import tabdeck  # noqa: E402
 
-HOST = {"Host": "127.0.0.1:8765"}
+TOKEN = "test-token"
+tabdeck.TOKEN = TOKEN
+HOST = {"Host": "127.0.0.1:8765", "Cookie": f"tabdeck={TOKEN}"}
 ORIGIN = {"Origin": "http://127.0.0.1:8765"}
 
 
@@ -150,6 +152,29 @@ class Editing(StateMixin, unittest.TestCase):
         tabdeck.edit_key("k1", "delete", {})
         self.assertEqual(len(tomllib.loads(self.user_cfg.read_text())["keys"]), n - 1)
 
+    def test_move_within_page_only(self):
+        first, second = tabdeck.CFG["keys"][6], tabdeck.CFG["keys"][7]
+        tabdeck.edit_key("k7", "move", {"to": "k6"})
+        self.assertEqual(tabdeck.CFG["keys"][6:8], [second, first])
+        with self.assertRaises(tabdeck.EditError):
+            tabdeck.edit_key("k6", "move", {"to": "a0k0"})
+
+    def test_create_page_and_drop_it_when_empty(self):
+        tabdeck.create_page("org.kde.Dolphin", {"type": "shortcut", "label": "Up", "value": "alt+Up"})
+        self.assertEqual(tabdeck.KEYS["apps"]["org.kde.dolphin"][0]["label"], "Up")
+        saved = tomllib.loads(self.user_cfg.read_text())
+        self.assertIn("org.kde.dolphin", saved["apps"])
+        with self.assertRaises(tabdeck.EditError):
+            tabdeck.create_page("org.kde.Dolphin", {"type": "shortcut", "label": "Up", "value": "alt+Up"})
+        kid = tabdeck.KEYS["apps"]["org.kde.dolphin"][0]["id"]
+        tabdeck.edit_key(kid, "delete", {})
+        self.assertNotIn("org.kde.dolphin", tabdeck.CFG["apps"])
+
+    def test_create_page_rejects_bad_class(self):
+        for bad in ["", "a b", "../x", "x" * 65, 'a"b']:
+            with self.assertRaises(tabdeck.EditError):
+                tabdeck.create_page(bad, {"type": "workspace", "value": "1"})
+
     def test_unknown_key_or_op(self):
         with self.assertRaises(tabdeck.EditError):
             tabdeck.edit_key("k999", "delete", {})
@@ -191,6 +216,26 @@ class Http(StateMixin, unittest.TestCase):
         self.assertEqual(self.request("GET", "/api/keys", {**HOST, "Origin": "https://evil.com"})[0], 403)
         self.assertEqual(self.request("POST", "/run/nope", HOST)[0], 403)
         self.assertEqual(self.request("POST", "/run/nope", {**HOST, "Origin": "https://evil.com"})[0], 403)
+
+    def test_api_needs_the_cookie(self):
+        no_cookie = {"Host": "127.0.0.1:8765"}
+        self.assertEqual(self.request("GET", "/api/keys", no_cookie)[0], 401)
+        self.assertEqual(self.request("GET", "/api/keys", {**no_cookie, "Cookie": "tabdeck=wrong"})[0], 401)
+        self.assertEqual(self.request("POST", "/run/nope", {**no_cookie, **ORIGIN})[0], 401)
+        self.assertEqual(self.request("GET", "/", no_cookie)[0], 200)
+
+    def test_unlock_sets_cookie(self):
+        conn = UnixConnection(self.sock)
+        conn.request("GET", f"/?t={TOKEN}", headers={"Host": "127.0.0.1:8765"})
+        r = conn.getresponse()
+        r.read()
+        conn.close()
+        self.assertEqual(r.status, 303)
+        cookie = r.getheader("Set-Cookie")
+        self.assertIn(f"tabdeck={TOKEN}", cookie)
+        self.assertIn("HttpOnly", cookie)
+        self.assertIn("SameSite=Strict", cookie)
+        self.assertEqual(self.request("GET", "/?t=wrong", {"Host": "127.0.0.1:8765"})[0], 200)
 
     def test_rejects_unknown_actions_and_paths(self):
         self.assertEqual(self.request("POST", "/run/nope", {**HOST, **ORIGIN})[0], 404)
