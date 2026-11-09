@@ -36,8 +36,8 @@ body{
 .grid{
   height:100dvh;padding:12px;
   display:grid;gap:12px;
-  grid-template-columns:repeat(12,minmax(0,1fr));
-  grid-template-rows:auto minmax(0,1.15fr) auto minmax(128px,1fr);
+  grid-template-columns:minmax(0,7fr) minmax(0,5fr);
+  grid-template-rows:auto auto minmax(0,1fr);
   animation:enter .4s var(--ease) both;
 }
 @keyframes enter{from{opacity:0;transform:translateY(8px)}}
@@ -47,6 +47,7 @@ body{
 .meta{color:var(--muted);font-size:12px;line-height:16px}
 
 /* Header */
+.col{display:flex;flex-direction:column;gap:12px;min-height:0;min-width:0}
 header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:4px 4px 0;height:36px}
 .host{display:flex;align-items:baseline;gap:12px}
 .host b{font-weight:500;font-size:16px}
@@ -59,11 +60,11 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 .link.off .dot{background:var(--bad)}
 
 /* CPU */
-.cpu{grid-column:1/8;grid-row:2;display:flex;flex-direction:column;gap:12px}
+.cpu{flex:1 1 0;display:flex;flex-direction:column;gap:12px}
 .cpu-head{display:flex;align-items:flex-end;justify-content:space-between}
 .figure{font-size:32px;line-height:1;font-weight:500}
 .cpu-temp{color:var(--text-2);font-size:13px;margin-left:12px}
-.chart{position:relative;flex:1;min-height:0;margin-right:32px}
+.chart{position:relative;flex:1;min-height:72px;margin:8px 32px 8px 0}
 .chart svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .chart .gl{stroke:var(--line);stroke-width:1;vector-effect:non-scaling-stroke}
 .chart .area{fill:var(--accent);opacity:.08}
@@ -73,14 +74,14 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
   box-shadow:0 0 0 3px var(--card);transform:translateY(-50%);transition:top .3s var(--ease)}
 
 /* Stats */
-.stats{grid-column:1/8;grid-row:3;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stats{flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .stat{display:flex;flex-direction:column;gap:4px;padding:12px 16px}
 .stat .v{font-size:24px;line-height:32px;font-weight:500;white-space:nowrap}
 .stat .v small,.figure small{font-size:14px;color:var(--text-2);font-weight:400;margin-left:4px}
 .stat .meta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* Now playing */
-.np{grid-column:8/13;grid-row:2/4;display:flex;flex-direction:column;gap:16px}
+.np{flex:none;display:flex;flex-direction:column;gap:16px}
 .np-top{display:flex;gap:16px;min-height:0}
 .np-seek{margin-top:auto}
 .art{width:136px;height:136px;flex:none;border-radius:8px;background:var(--raised);overflow:hidden;
@@ -107,7 +108,7 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 .np.idle .np-title{color:var(--text-2)}
 
 /* Keys */
-.keys{grid-column:1/8;grid-row:4;padding:12px;border-radius:20px;
+.keys{min-height:0;padding:12px;border-radius:20px;
   display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:repeat(var(--rows,2),minmax(0,1fr));gap:8px}
 .key{position:relative;border:1px solid var(--line);border-radius:8px;background:var(--raised);color:var(--text);
   font:inherit;text-align:left;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;
@@ -122,7 +123,7 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 .key.err{background:#3a1d1f}
 
 /* Windows */
-.wins{grid-column:8/13;grid-row:4;display:flex;flex-direction:column;gap:8px;padding:16px 8px 8px}
+.wins{min-height:0;display:flex;flex-direction:column;gap:8px;padding:16px 8px 8px}
 .wins-head{display:flex;justify-content:space-between;padding:0 8px}
 .list{overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column;gap:2px}
 .list::-webkit-scrollbar{display:none}
@@ -145,16 +146,17 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 @media (max-aspect-ratio:1/1){
   body{overflow:auto}
   .grid{height:auto;grid-template-columns:1fr;grid-template-rows:auto}
-  .grid>*{grid-column:1!important;grid-row:auto!important}
-  .cpu{height:240px}
-  .keys{height:200px}
-  .wins{max-height:320px}
+  .cpu{flex:none;height:240px}
+  .keys{flex:none;height:200px}
+  .wins{flex:none;max-height:320px}
 }
 @media (max-height:540px){
-  .grid{gap:8px;padding:8px}
+  .grid,.col{gap:8px}
+  .grid{padding:8px}
   header{height:28px;padding-top:0}
   .card{padding:12px}
   .cpu{gap:8px}
+  .chart{min-height:40px;margin:4px 32px 4px 0}
   .stats{gap:8px}
   .stat{padding:8px 12px;gap:0}
   .stat .v{font-size:20px;line-height:28px}
@@ -181,9 +183,10 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
     </div>
   </header>
 
+  <div class="col">
   <section class="card cpu">
     <div class="cpu-head">
-      <span class="label">Processor</span>
+      <span class="label">Processor <span class="meta">· last 2 minutes</span></span>
       <div><span class="figure num" id="cpu">0<small>%</small></span><span class="cpu-temp num" id="cpuTemp"></span></div>
     </div>
     <div class="chart" id="chart">
@@ -198,7 +201,6 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
       <span class="ax meta num" style="top:100%">0</span>
       <span class="head" id="head" style="top:100%"></span>
     </div>
-    <span class="meta">Last 2 minutes</span>
   </section>
 
   <section class="stats">
@@ -207,6 +209,8 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
     <div class="card stat"><span class="label">Battery</span><span class="v num" id="bat">—</span><span class="meta" id="batSub"></span></div>
     <div class="card stat"><span class="label">Network</span><span class="v num" id="down">—</span><span class="meta num" id="up"></span></div>
   </section>
+
+  </div>
 
   <section class="card np idle" id="np">
     <div class="np-top">
