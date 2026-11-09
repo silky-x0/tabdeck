@@ -44,12 +44,25 @@ ln -s ~/tabdeck/tablet ~/.local/bin/tablet
 
 Every time after that, plug in the tablet, run `tablet` and open the app. To tear everything down, run `tablet stop`.
 
+### Start automatically on plug-in
+
+```sh
+tablet install
+```
+
+This needs the tablet plugged in, and asks for sudo once. It installs:
+- a udev rule that matches your tablet by serial number
+- a systemd user service that runs `tablet` when the tablet is plugged in and tears everything down when it's unplugged
+
+The service also starts at login if the tablet is already connected. To remove both, run `tablet uninstall`. Logs are in `journalctl --user -u tabdeck`.
+
 ## How it works
 
 | Piece | What it does |
 | --- | --- |
 | `tablet` | Creates a headless Hyprland output sized to the tablet, starts `wayvnc` on it, starts the server and sets up `adb reverse` for ports 5900 and 8765 |
 | `config.toml` | Keys, display placement, and hardware overrides |
+| `tablet install` | Writes `/etc/udev/rules.d/70-tabdeck.rules` and `~/.config/systemd/user/tabdeck.service` |
 | `tabdeck.py` | Standard-library HTTP server. It serves the page, a JSON API with stats, player and window data, and a fixed list of actions |
 | `static/` | The command center page, its fonts, icons and web app manifest |
 
@@ -115,7 +128,6 @@ VNC sends a single pointer, so touch on the display works as mouse input. Multi-
 
 ## Roadmap
 
-- Start automatically when the tablet is plugged in (udev + systemd user service)
 - Per-app key pages that follow the focused window
 
 ## Credits

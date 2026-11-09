@@ -1,20 +1,75 @@
 #!/usr/bin/env bash
-# Usage: tablet        start extended display + command center over USB
-#        tablet stop   tear it all down
+# Usage: tablet             start extended display + command center over USB
+#        tablet stop        tear it all down
+#        tablet install     start automatically when this tablet is plugged in (asks for sudo)
+#        tablet uninstall   remove the automatic start
 set -u
 DIR="$(dirname "$(readlink -f "$0")")"
+SELF="$DIR/tablet"
+UNIT="$HOME/.config/systemd/user/tabdeck.service"
+RULE=/etc/udev/rules.d/70-tabdeck.rules
 
-if [[ "${1:-}" == stop ]]; then
+teardown() {
     pkill -x wayvnc
     pkill -f '^python3 tabdeck.py'
-    hyprctl output remove TAB >/dev/null
+    hyprctl output remove TAB >/dev/null 2>&1
     adb reverse --remove-all 2>/dev/null
+}
+
+case "${1:-}" in
+stop)
+    # Stop the service too, so the next plug-in can start it again.
+    systemctl --user stop tabdeck.service 2>/dev/null
+    teardown
     echo "Stopped"
     exit 0
-fi
+    ;;
+teardown)
+    teardown
+    exit 0
+    ;;
+install)
+    serial=$(timeout 5 adb -d get-serialno 2>/dev/null)
+    [[ "$serial" =~ ^[A-Za-z0-9]+$ ]] || { echo "Plug in the tablet with USB debugging allowed, then retry"; exit 1; }
+    mkdir -p "$(dirname "$UNIT")"
+    cat > "$UNIT" <<EOF
+[Unit]
+Description=tabdeck: tablet display and command center
+BindsTo=sys-subsystem-usb-tabdeck.device
+After=sys-subsystem-usb-tabdeck.device graphical-session.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart="$SELF"
+ExecStop="$SELF" teardown
+
+[Install]
+WantedBy=graphical-session.target
+EOF
+    # ACTION!="remove" keeps the systemd tag on change events, so the device unit stays plugged.
+    echo "ACTION!=\"remove\", SUBSYSTEM==\"usb\", ENV{DEVTYPE}==\"usb_device\", ATTR{serial}==\"$serial\", TAG+=\"systemd\", ENV{SYSTEMD_ALIAS}=\"/sys/subsystem/usb/tabdeck\", ENV{SYSTEMD_USER_WANTS}=\"tabdeck.service\"" \
+        | sudo tee "$RULE" >/dev/null || exit 1
+    sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=usb --attr-match=serial="$serial" --action=change
+    systemctl --user daemon-reload
+    systemctl --user enable tabdeck.service >/dev/null 2>&1
+    echo "Installed for tablet $serial. It starts when plugged in and stops when unplugged."
+    exit 0
+    ;;
+uninstall)
+    systemctl --user disable --now tabdeck.service 2>/dev/null
+    rm -f "$UNIT"
+    systemctl --user daemon-reload
+    sudo rm -f "$RULE" && sudo udevadm control --reload
+    echo "Uninstalled"
+    exit 0
+    ;;
+esac
 
 echo "Waiting for tablet on USB (plug it in, allow USB debugging)..."
 timeout 60 adb wait-for-usb-device || { echo "No tablet found"; exit 1; }
+
+for _ in {1..30}; do hyprctl monitors >/dev/null 2>&1 && break; sleep 1; done
 
 (cd "$DIR" && python3 tabdeck.py setup-display) || exit 1
 
