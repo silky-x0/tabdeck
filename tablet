@@ -7,6 +7,7 @@ set -u
 DIR="$(dirname "$(readlink -f "$0")")"
 SELF="$DIR/tablet"
 UNIT="$HOME/.config/systemd/user/tabdeck.service"
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/tabdeck"
 RULE=/etc/udev/rules.d/70-tabdeck.rules
 
 teardown() {
@@ -71,14 +72,19 @@ timeout 60 adb wait-for-usb-device || { echo "No tablet found"; exit 1; }
 
 for _ in {1..30}; do hyprctl monitors >/dev/null 2>&1 && break; sleep 1; done
 
+export ANDROID_SERIAL
+ANDROID_SERIAL=$(adb -d get-serialno)
+
 (cd "$DIR" && python3 tabdeck.py setup-display) || exit 1
 
-pgrep -x wayvnc >/dev/null || setsid wayvnc -o TAB 127.0.0.1 5900 >/dev/null 2>&1 &
+# Both servers listen on sockets in a 0700 dir, so only this user and its adb tunnel can reach them.
+mkdir -p -m 700 "$RUN"
+pgrep -x wayvnc >/dev/null || setsid wayvnc -u -o TAB "$RUN/vnc.sock" >/dev/null 2>&1 &
 pgrep -f '^python3 tabdeck.py' >/dev/null || (cd "$DIR" && setsid python3 tabdeck.py >server.log 2>&1 &)
 sleep 1
 
-adb -d reverse tcp:5900 tcp:5900 >/dev/null
-adb -d reverse tcp:8765 tcp:8765 >/dev/null
-adb -d shell am start -a android.intent.action.VIEW -d 'vnc://127.0.0.1:5900' com.gaurav.avnc >/dev/null 2>&1
+adb reverse tcp:5900 "localfilesystem:$RUN/vnc.sock" >/dev/null
+adb reverse tcp:8765 "localfilesystem:$RUN/http.sock" >/dev/null
+adb shell am start -a android.intent.action.VIEW -d 'vnc://127.0.0.1:5900' com.gaurav.avnc >/dev/null 2>&1
 
 echo "Ready. Display is in AVNC, command center at http://127.0.0.1:8765"

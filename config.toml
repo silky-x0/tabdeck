@@ -13,6 +13,12 @@ scale = 1
 # Copy the wallpaper from your first monitor (needs awww or swww).
 wallpaper = true
 
+[edit]
+# Long-press a key on the tablet to edit it. Labels, icons, shortcuts and workspaces
+# are always editable. Changing a command from the tablet lets anything that can reach
+# the tablet's localhost run commands on this PC, so it is off unless you turn it on.
+commands = false
+
 [hardware]
 # Each one is "auto" or a fixed value, like net = "wlan0", battery = "BAT1",
 # cpu_sensor = "coretemp", gpu = "nvidia" | "amd" | "none".

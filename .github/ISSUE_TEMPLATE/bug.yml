@@ -1,0 +1,46 @@
+name: Bug report
+description: Something doesn't work on your setup
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: hyprland
+    attributes:
+      label: Hyprland version
+      description: Output of `hyprctl version | head -1`
+    validations:
+      required: true
+  - type: dropdown
+    id: config
+    attributes:
+      label: Hyprland config type
+      options: [Lua (hyprland.lua), Classic (hyprland.conf)]
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+      description: For example "NVIDIA RTX 3050", "AMD Radeon 780M" or "Intel Iris Xe"
+  - type: input
+    id: tablet
+    attributes:
+      label: Tablet model and Android version
+    validations:
+      required: true
+  - type: dropdown
+    id: link
+    attributes:
+      label: Connection
+      options: [USB, Wireless]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `tablet` or `journalctl --user -u tabdeck -n 50`, and `~/tabdeck/server.log`
+      render: text

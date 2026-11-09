@@ -3,21 +3,31 @@ import json
 import mimetypes
 import os
 import re
+import shlex
 import shutil
 import socket
+import socketserver
 import subprocess
 import sys
+import threading
 import time
 import tomllib
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import unquote, urlparse, urlsplit
 
-HOST, PORT = "127.0.0.1", 8765
+PORT = 8765
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
+ICONS = STATIC / "icons"
+RUNDIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "tabdeck"
+SOCKET = RUNDIR / "http.sock"
 MONITOR = "TAB"
 ADDR = re.compile(r"0x[0-9a-f]{1,16}")
+ICON_NAME = re.compile(r"[a-z0-9-]{1,64}")
+# The page is only ever loaded from the adb tunnel; anything else is another site trying to reach us.
+ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
+HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 
 
 def run(cmd, timeout=2):
@@ -52,28 +62,75 @@ def shortcut_cmd(spec):
     return cmd
 
 
-def load_config():
-    user = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "tabdeck" / "config.toml"
-    path = user if user.is_file() else ROOT / "config.toml"
-    with open(path, "rb") as f:
-        cfg = tomllib.load(f)
+def user_config_path():
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "tabdeck" / "config.toml"
+
+
+def config_error(cfg):
     lists = {"keys": cfg.get("keys", [])}
     lists.update({f"apps.{a}.keys": v.get("keys", []) for a, v in cfg.get("apps", {}).items()})
     for where, keys in lists.items():
         for i, k in enumerate(keys):
             if "workspace" in k:
                 if not isinstance(k["workspace"], int):
-                    sys.exit(f"{path}: {where}[{i}].workspace must be a number")
+                    return f"{where}[{i}].workspace must be a number"
             elif "shortcut" in k:
                 if not SHORTCUT.fullmatch(str(k["shortcut"])) or not k.get("label"):
-                    sys.exit(f"{path}: {where}[{i}] needs a label and a shortcut like \"ctrl+shift+t\"")
+                    return f'{where}[{i}] needs a label and a shortcut like "ctrl+shift+t"'
             elif not isinstance(k.get("command"), (str, list)) or not k.get("label"):
-                sys.exit(f"{path}: {where}[{i}] needs workspace, or label with command or shortcut")
+                return f"{where}[{i}] needs workspace, or label with command or shortcut"
+    return None
+
+
+def load_config():
+    path = user_config_path() if user_config_path().is_file() else ROOT / "config.toml"
+    with open(path, "rb") as f:
+        cfg = tomllib.load(f)
+    if err := config_error(cfg):
+        sys.exit(f"{path}: {err}")
     return cfg
+
+
+BARE = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def toml_value(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return repr(v)
+    if isinstance(v, list):
+        return "[" + ", ".join(toml_value(x) for x in v) + "]"
+    return json.dumps(str(v), ensure_ascii=False)
+
+
+def toml_key(k):
+    return k if BARE.fullmatch(k) else json.dumps(k)
+
+
+def dump_toml(cfg):
+    """Serializes tabdeck's config shape: scalars, flat tables, [[keys]] and [[apps.<name>.keys]]."""
+    out = ["# Written by tabdeck. Comments are not kept when keys are edited from the tablet.", ""]
+    for k, v in cfg.items():
+        if not isinstance(v, (dict, list)) or (isinstance(v, list) and not any(isinstance(x, dict) for x in v)):
+            out.append(f"{toml_key(k)} = {toml_value(v)}")
+    for k, v in cfg.items():
+        if isinstance(v, dict) and k != "apps":
+            out += ["", f"[{toml_key(k)}]"] + [f"{toml_key(a)} = {toml_value(b)}" for a, b in v.items()]
+
+    def tables(header, rows):
+        for row in rows:
+            out.extend(["", f"[[{header}]]"] + [f"{toml_key(a)} = {toml_value(b)}" for a, b in row.items()])
+
+    tables("keys", cfg.get("keys", []))
+    for name, app in cfg.get("apps", {}).items():
+        tables(f"apps.{toml_key(name)}.keys", app.get("keys", []))
+    return "\n".join(out) + "\n"
 
 
 CFG = load_config()
 HW = CFG.get("hardware", {})
+CFG_LOCK = threading.Lock()
 
 
 def hypr_lua():
@@ -101,8 +158,8 @@ def window_cmd(verb, addr):
     return ["hyprctl", "dispatch", "focuswindow" if verb == "focus" else "closewindow", f"address:{addr}"]
 
 
-# Only these fixed commands can run; the client sends an id, never a command.
-ACTIONS = {
+# Only commands from the config can run; the client sends an id, never a command.
+BASE_ACTIONS = {
     "voldown": ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"],
     "mute": ["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"],
     "volup": ["wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", "5%+"],
@@ -110,35 +167,133 @@ ACTIONS = {
     "play": ["playerctl", "play-pause"],
     "next": ["playerctl", "next"],
 }
-def build_keys(keys, prefix):
+
+
+def command_text(c):
+    return c if isinstance(c, str) else shlex.join(c)
+
+
+def build_keys(keys, prefix, actions):
     out = []
     for i, k in enumerate(keys):
         kid = f"{prefix}{i}"
         if "workspace" in k:
-            ACTIONS[kid] = workspace_cmd(k["workspace"])
-            out.append({"id": kid, "ws": k["workspace"]})
+            actions[kid] = workspace_cmd(k["workspace"])
+            out.append({"id": kid, "ws": k["workspace"], "type": "workspace", "value": str(k["workspace"])})
             continue
         if "shortcut" in k:
-            ACTIONS[kid] = shortcut_cmd(k["shortcut"])
+            actions[kid] = shortcut_cmd(k["shortcut"])
+            kind, value = "shortcut", k["shortcut"]
         else:
             c = k["command"]
-            ACTIONS[kid] = ["sh", "-c", c] if isinstance(c, str) else c
-        out.append({"id": kid, "label": k["label"], "icon": k.get("icon")})
+            actions[kid] = ["sh", "-c", c] if isinstance(c, str) else c
+            kind, value = "command", command_text(c)
+        out.append({"id": kid, "label": k["label"], "icon": k.get("icon"), "type": kind, "value": value})
     return out
 
 
-# Workspace keys stay on every page; an app page swaps out the other default keys.
-KEYS = {
-    "default": build_keys(CFG.get("keys", []), "k"),
-    "apps": {name.lower(): build_keys(app.get("keys", []), f"a{j}k")
-             for j, (name, app) in enumerate(CFG.get("apps", {}).items())},
-}
+def build_all(cfg):
+    actions = dict(BASE_ACTIONS)
+    # Workspace keys stay on every page; an app page swaps out the other default keys.
+    keys = {
+        "default": build_keys(cfg.get("keys", []), "k", actions),
+        "apps": {name.lower(): build_keys(app.get("keys", []), f"a{j}k", actions)
+                 for j, (name, app) in enumerate(cfg.get("apps", {}).items())},
+        "editCommands": bool(cfg.get("edit", {}).get("commands", False)),
+    }
+    return actions, keys
+
+
+ACTIONS, KEYS = build_all(CFG)
+
+
+def key_list(cfg, kid):
+    """Maps a key id (k3, a1k0) to its list in the config and its index."""
+    m = re.fullmatch(r"(?:a(\d+))?k(\d+)", kid)
+    if not m:
+        return None, None
+    if m[1] is None:
+        lst = cfg.setdefault("keys", [])
+    else:
+        apps = list(cfg.get("apps", {}).values())
+        if int(m[1]) >= len(apps):
+            return None, None
+        lst = apps[int(m[1])].setdefault("keys", [])
+    i = int(m[2])
+    return (lst, i) if i < len(lst) else (None, None)
+
+
+class EditError(Exception):
+    pass
+
+
+def key_from_client(data, old, cfg):
+    """Builds a config key from untrusted editor input."""
+    kind = data.get("type")
+    value = str(data.get("value", "")).strip()
+    if kind == "workspace":
+        if not value.isdigit() or not 1 <= int(value) <= 99:
+            raise EditError("Workspace must be a number from 1 to 99")
+        return {"workspace": int(value)}
+    label = str(data.get("label", "")).strip()
+    if not 1 <= len(label) <= 24:
+        raise EditError("Label must be 1 to 24 characters")
+    key = {"label": label}
+    icon = str(data.get("icon") or "")
+    if icon:
+        if not ICON_NAME.fullmatch(icon) or not (ICONS / f"{icon}.svg").is_file():
+            raise EditError("Unknown icon")
+        key["icon"] = icon
+    if kind == "shortcut":
+        if not SHORTCUT.fullmatch(value):
+            raise EditError('Shortcut looks like "ctrl+shift+t"')
+        key["shortcut"] = value
+    elif kind == "command":
+        unchanged = old is not None and "command" in old and command_text(old["command"]) == value
+        if unchanged:
+            key["command"] = old["command"]
+        elif not cfg.get("edit", {}).get("commands", False):
+            raise EditError("Editing commands from the tablet is off. Set edit.commands = true in the config")
+        elif not 1 <= len(value) <= 500:
+            raise EditError("Command must be 1 to 500 characters")
+        else:
+            key["command"] = value
+    else:
+        raise EditError("Unknown key type")
+    return key
+
+
+def edit_key(kid, op, data):
+    """Applies one edit from the tablet, saves the user config and rebuilds the keys."""
+    global CFG, ACTIONS, KEYS
+    with CFG_LOCK:
+        cfg = json.loads(json.dumps(CFG))
+        lst, i = key_list(cfg, kid)
+        if lst is None:
+            raise EditError("Unknown key")
+        if op == "delete":
+            del lst[i]
+        elif op == "save":
+            lst[i] = key_from_client(data, lst[i], cfg)
+        elif op == "insert":
+            lst.insert(i + 1, key_from_client(data, None, cfg))
+        else:
+            raise EditError("Unknown operation")
+        if err := config_error(cfg):
+            raise EditError(err)
+        path = user_config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(dump_toml(cfg))
+        tmp.replace(path)
+        CFG = cfg
+        ACTIONS, KEYS = build_all(cfg)
 
 
 # --- hardware detection ---
 
 def detect_cpu_sensor():
-    names = {read(h / "name"): h for h in Path("/sys/class/hwmon").iterdir()}
+    names = {read(h / "name"): h for h in Path("/sys/class/hwmon").glob("hwmon*")}
     want = HW.get("cpu_sensor", "auto")
     for name in ([want] if want != "auto" else ["k10temp", "zenpower", "coretemp", "cpu_thermal", "acpitz"]):
         if name in names:
@@ -150,7 +305,7 @@ def detect_battery():
     want = HW.get("battery", "auto")
     if want != "auto":
         return Path("/sys/class/power_supply") / want
-    for p in sorted(Path("/sys/class/power_supply").iterdir()):
+    for p in sorted(Path("/sys/class/power_supply").glob("*")):
         if read(p / "type") == "Battery":
             return p
     return None
@@ -309,7 +464,7 @@ def tablet_resolution():
     res = CFG.get("display", {}).get("resolution", "auto")
     if res != "auto":
         return res
-    m = re.search(r"(\d+)x(\d+)", run(["adb", "-d", "shell", "wm", "size"], timeout=5))
+    m = re.search(r"(\d+)x(\d+)", run(["adb", "shell", "wm", "size"], timeout=5))
     if not m:
         sys.exit("Could not read the tablet resolution; set display.resolution in the config")
     w, h = sorted(map(int, m.groups()), reverse=True)
@@ -338,6 +493,12 @@ def setup_display():
 
 
 class Handler(BaseHTTPRequestHandler):
+    def _trusted(self, write):
+        if self.headers.get("Host") not in HOSTS:
+            return False
+        origin = self.headers.get("Origin")
+        return origin in ORIGINS if write else origin in (None, *ORIGINS)
+
     def _send(self, code, body=b"", ctype="text/plain", cache=False):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
@@ -350,7 +511,11 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps(data).encode(), "application/json")
 
     def do_GET(self):
+        if not self._trusted(write=False):
+            return self._send(403)
         path = urlsplit(self.path).path
+        if path == "/api/icons":
+            return self._json(sorted(p.stem for p in ICONS.glob("*.svg")))
         if path == "/api/stats":
             return self._json(stats())
         if path == "/api/player":
@@ -371,8 +536,22 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404)
 
     def do_POST(self):
+        if not self._trusted(write=True):
+            return self._send(403)
         path = urlsplit(self.path).path
         verb, _, arg = path.strip("/").partition("/")
+        if verb == "keys":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                if self.headers.get("Content-Type") != "application/json" or not 0 < length <= 4096:
+                    raise EditError("Expected a small JSON body")
+                body = json.loads(self.rfile.read(length))
+                edit_key(arg, body.get("op"), body.get("key") or {})
+            except EditError as e:
+                return self._send(400, str(e).encode())
+            except (ValueError, AttributeError):
+                return self._send(400, b"Invalid request")
+            return self._json(KEYS)
         if verb in ("focus", "close"):
             if not ADDR.fullmatch(arg):
                 return self._send(400)
@@ -392,8 +571,20 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+class UnixHTTPServer(socketserver.ThreadingUnixStreamServer):
+    daemon_threads = True
+
+
+def serve():
+    # A socket in a 0700 runtime dir: only this user (and the adb tunnel it owns) can connect.
+    RUNDIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    RUNDIR.chmod(0o700)
+    SOCKET.unlink(missing_ok=True)
+    UnixHTTPServer(str(SOCKET), Handler).serve_forever()
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["setup-display"]:
         setup_display()
     else:
-        ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+        serve()

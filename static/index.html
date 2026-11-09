@@ -144,6 +144,45 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
+/* Key editor */
+.scrim{position:fixed;inset:0;background:rgba(8,8,9,.6);display:flex;justify-content:center;align-items:flex-start;
+  padding:12px;z-index:10;opacity:0;pointer-events:none;transition:opacity .18s var(--ease)}
+.scrim.open{opacity:1;pointer-events:auto}
+.sheet{width:min(560px,100%);max-height:calc(100dvh - 24px);overflow-y:auto;background:var(--card);
+  border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:16px;
+  box-shadow:0 16px 48px rgba(0,0,0,.5);transform:translateY(-8px);transition:transform .22s var(--ease);user-select:text}
+.scrim.open .sheet{transform:none}
+.sheet-head{display:flex;align-items:center;justify-content:space-between}
+.sheet-head h2{font-size:16px;line-height:24px;font-weight:500}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;background:var(--deep);border-radius:10px}
+.seg button{height:36px;border:0;border-radius:6px;background:transparent;color:var(--text-2);font:inherit;
+  transition:background-color .15s var(--ease),color .15s var(--ease)}
+.seg button[aria-pressed=true]{background:var(--raised);color:var(--text);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+.seg button:disabled{color:var(--muted);opacity:.5}
+.field{display:flex;flex-direction:column;gap:8px}
+.field input{height:44px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--raised);
+  color:var(--text);font:inherit;caret-color:var(--accent)}
+.field input::placeholder{color:var(--muted)}
+.field input:focus{outline:none;border-color:var(--accent)}
+.field .meta{margin-top:-4px}
+.icons{display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:4px;max-height:100px;overflow-y:auto}
+.icons button{height:44px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-2);
+  display:grid;place-items:center;transition:background-color .15s var(--ease)}
+.icons button:active{background:var(--raised)}
+.icons button[aria-pressed=true]{background:var(--raised);border-color:var(--accent);color:var(--text)}
+.sheet-error{color:var(--bad);font-size:13px;min-height:20px}
+.sheet-foot{display:flex;align-items:center;gap:8px}
+.sheet-foot .grow{flex:1}
+.tbtn{height:44px;padding:0 16px;border:0;border-radius:10px;background:transparent;color:var(--text-2);font:inherit;
+  transition:background-color .15s var(--ease)}
+.tbtn:active{background:var(--raised)}
+.tbtn.danger{color:var(--bad);padding:0 12px}
+.tbtn.primary{background:var(--text);color:var(--bg);font-weight:500;box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
+.tbtn.primary:active{background:var(--text-2)}
+.tbtn.quiet{height:36px;padding:0 12px;font-size:13px}
+.key.holding{transform:scale(.97);background:#2a2a2d}
+[hidden]{display:none!important}
+
 @media (max-aspect-ratio:1/1){
   body{overflow:auto}
   .grid{height:auto;grid-template-columns:1fr;grid-template-rows:auto}
@@ -247,6 +286,30 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
   </section>
 </div>
 
+<div class="scrim" id="scrim">
+  <form class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" novalidate>
+    <div class="sheet-head">
+      <h2 id="sheetTitle">Edit key</h2>
+      <button type="button" class="tbtn quiet" id="addAfter">Add key after</button>
+    </div>
+    <div class="seg" role="group" aria-label="Key type">
+      <button type="button" data-type="workspace">Workspace</button>
+      <button type="button" data-type="shortcut">Shortcut</button>
+      <button type="button" data-type="command">Command</button>
+    </div>
+    <label class="field" id="labelField"><span class="label">Label</span><input id="fLabel" maxlength="24" autocomplete="off"></label>
+    <label class="field"><span class="label" id="valueLabel">Value</span><input id="fValue" autocomplete="off" autocapitalize="off" spellcheck="false"><span class="meta" id="valueHint"></span></label>
+    <div class="field" id="iconField"><span class="label">Icon</span><div class="icons" id="icons"></div></div>
+    <p class="sheet-error" id="sheetError" role="alert"></p>
+    <div class="sheet-foot">
+      <button type="button" class="tbtn danger" id="del">Delete</button>
+      <span class="grow"></span>
+      <button type="button" class="tbtn" id="cancel">Cancel</button>
+      <button type="submit" class="tbtn primary">Save</button>
+    </div>
+  </form>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
 let keyConfig = {default: [], apps: {}}, keyPage;
@@ -254,8 +317,8 @@ async function loadKeys() {
   keyConfig = await fetch("/api/keys").then(r => r.json()).catch(() => keyConfig);
   showPage(null);
 }
-function showPage(page) {
-  if (page === keyPage) return;
+function showPage(page, force) {
+  if (page === keyPage && !force) return;
   keyPage = page;
   const base = keyConfig.default;
   const keys = page ? [...base.filter(k => k.ws != null), ...keyConfig.apps[page]] : base;
@@ -284,7 +347,85 @@ async function post(url, el) {
   if (!r || !r.ok) { el.classList.add("err"); setTimeout(() => el.classList.remove("err"), 600); }
   else setTimeout(pollAll, 250);
 }
+let held = null, holdTimer;
+$("keys").addEventListener("pointerdown", e => {
+  const k = e.target.closest(".key");
+  if (!k) return;
+  holdTimer = setTimeout(() => { held = k; k.classList.remove("holding"); openEditor(k.dataset.run, "save"); }, 550);
+  k.classList.add("holding");
+});
+const endHold = () => { clearTimeout(holdTimer); document.querySelectorAll(".key.holding").forEach(k => k.classList.remove("holding")); };
+["pointerup", "pointercancel", "pointerleave"].forEach(t => $("keys").addEventListener(t, endHold));
+$("keys").addEventListener("contextmenu", e => e.preventDefault());
+
+const findKey = id => [...keyConfig.default, ...Object.values(keyConfig.apps).flat()].find(k => k.id === id);
+let editId, editMode, editType, editIcon, iconNames;
+const HINTS = {
+  workspace: ["Workspace number", "1 to 99", "numeric"],
+  shortcut: ["Shortcut", "Sent to the focused window, like ctrl+shift+t or alt+Left", "text"],
+  command: ["Command", "Runs with sh -c on the PC", "text"],
+};
+function setType(t) {
+  editType = t;
+  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.type === t));
+  const [label, hint, mode] = HINTS[t];
+  $("valueLabel").textContent = label;
+  $("valueHint").textContent = t === "command" && !keyConfig.editCommands
+    ? "Commands are read-only here. Set edit.commands = true in the config to change them" : hint;
+  $("fValue").inputMode = mode;
+  $("fValue").readOnly = t === "command" && !keyConfig.editCommands;
+  $("labelField").hidden = $("iconField").hidden = t === "workspace";
+}
+function setIcon(name) {
+  editIcon = name;
+  document.querySelectorAll("#icons button").forEach(b => b.setAttribute("aria-pressed", b.dataset.icon === name));
+}
+async function openEditor(id, mode) {
+  if (!iconNames) {
+    iconNames = await fetch("/api/icons").then(r => r.json()).catch(() => []);
+    $("icons").replaceChildren(...iconNames.map(n => {
+      const b = document.createElement("button");
+      b.type = "button"; b.dataset.icon = n; b.setAttribute("aria-label", n);
+      b.innerHTML = `<span class="i" style="--src:url(icons/${encodeURIComponent(n)}.svg)"></span>`;
+      return b;
+    }));
+  }
+  const k = mode === "save" ? findKey(id) : null;
+  editId = id; editMode = mode;
+  $("sheetTitle").textContent = mode === "save" ? "Edit key" : "New key";
+  $("addAfter").hidden = $("del").hidden = mode !== "save";
+  $("fLabel").value = k?.label || "";
+  $("fValue").value = k?.value || "";
+  $("sheetError").textContent = "";
+  document.querySelector('.seg [data-type="command"]').disabled = !keyConfig.editCommands && k?.type !== "command";
+  setType(k?.type || "shortcut");
+  setIcon(k?.icon || "");
+  $("scrim").classList.add("open");
+}
+const closeEditor = () => { $("scrim").classList.remove("open"); document.activeElement?.blur(); };
+document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => setType(b.dataset.type)));
+$("icons").addEventListener("click", e => { const b = e.target.closest("[data-icon]"); if (b) setIcon(b.dataset.icon === editIcon ? "" : b.dataset.icon); });
+$("cancel").addEventListener("click", closeEditor);
+$("scrim").addEventListener("click", e => { if (e.target === $("scrim")) closeEditor(); });
+$("addAfter").addEventListener("click", () => openEditor(editId, "insert"));
+async function sendEdit(op, key) {
+  const r = await fetch(`/keys/${editId}`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({op, key})}).catch(() => null);
+  if (!r) { $("sheetError").textContent = "Can't reach the PC"; return; }
+  if (!r.ok) { $("sheetError").textContent = await r.text(); return; }
+  keyConfig = await r.json();
+  showPage(keyPage, true);
+  closeEditor();
+  pollAll();
+}
+$("del").addEventListener("click", () => sendEdit("delete", {}));
+$("sheet").addEventListener("submit", e => {
+  e.preventDefault();
+  sendEdit(editMode, {type: editType, label: $("fLabel").value, value: $("fValue").value, icon: editIcon});
+});
+
 document.addEventListener("click", e => {
+  if (held) { const h = held; held = null; if (h.contains(e.target)) return; }
+  if (e.target.closest("#scrim")) return;
   const b = e.target.closest("[data-run],[data-focus],[data-close]");
   if (b) post(b.dataset.run ? `/run/${b.dataset.run}` : b.dataset.focus ? `/focus/${b.dataset.focus}` : `/close/${b.dataset.close}`, b);
 });
