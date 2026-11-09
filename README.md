@@ -2,7 +2,7 @@
 
 Turn an Android tablet into a second monitor and a touch command center for a Hyprland desktop, over a USB cable.
 
-![The tabdeck command center on a Samsung Galaxy Tab A9](docs/screenshot.png)
+![tabdeck on a Samsung Galaxy Tab A9: the key page follows the focused app, with live stats, now playing and the window list](docs/demo.gif)
 
 - **Extended display.** A virtual Hyprland monitor streamed with wayvnc and shown in AVNC on the tablet.
 - **Command center.** A fullscreen web app on the tablet with:
