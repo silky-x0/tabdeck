@@ -81,6 +81,27 @@ Android turns Wireless debugging off whenever Wi-Fi disconnects, even briefly, a
 - Add the *Wireless debugging* tile under Developer options > Quick settings developer tiles, so it's one tap to turn back on.
 - If your router has separate 2.4 GHz and 5 GHz network names, keep the tablet on one of them.
 
+**If the tablet shows up but won't connect, check the PC's Wi-Fi too.** If `adb mdns services` lists the tablet but `ping` to it times out, the PC's Wi-Fi card may be in power-save mode. In that mode the card keeps the PC's own connections working but misses connections that start on the tablet. Toggling the PC's Wi-Fi fixes it for a while. Check with:
+
+```sh
+iw dev wlan0 get power_save
+```
+
+Realtek cards using the `rtw89` driver (for example the RTL8852BE) are especially prone to this. To turn power saving off:
+
+```sh
+sudo iw dev wlan0 set power_save off            # until reboot
+
+# permanently, with NetworkManager (2 = disable)
+printf '[connection]\nwifi.powersave = 2\n' | sudo tee /etc/NetworkManager/conf.d/wifi-powersave-off.conf
+sudo systemctl reload NetworkManager
+
+# rtw89 only, if drops continue; applies after a reboot
+echo 'options rtw89_core disable_ps_mode=y' | sudo tee /etc/modprobe.d/rtw89.conf
+```
+
+This costs a little battery on a laptop.
+
 USB is still the more reliable option, and the lower-latency one.
 
 ## How it works
