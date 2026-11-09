@@ -26,6 +26,11 @@ display = 5900
 # the tablet's localhost run commands on this PC, so it is off unless you turn it on.
 commands = false
 
+[integrations]
+# Show the mull icon and page (https://github.com/silky-x0/mull). If mull isn't installed,
+# the page explains how to install it.
+mull = true
+
 [hardware]
 # Each one is "auto" or a fixed value, like net = "wlan0", battery = "BAT1",
 # cpu_sensor = "coretemp", gpu = "nvidia" | "amd" | "none".

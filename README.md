@@ -13,6 +13,7 @@ Turn an Android tablet into a second monitor and a touch command center for a Hy
   - app launcher keys, and per-app key pages that follow the focused window
   - a window list where you can tap to focus a window or close it
   - long-press any key to edit it, drag it to reorder, or add a key page for the focused app
+  - a [mull](https://github.com/silky-x0/mull) page: rewrite highlighted text and dictate from the tablet
 
 Everything runs on your own PC and reaches the tablet through `adb reverse`. There's no cloud, no account and no app store install.
 
@@ -194,6 +195,23 @@ commands = true
 - GPU: NVIDIA through `nvidia-smi`, AMD through sysfs
 
 Override any of them under `[hardware]`. A card shows "Not available" or "No battery" when there's nothing to read.
+
+## mull
+
+[mull](https://github.com/silky-x0/mull) is an AI helper for the Linux desktop that rewrites highlighted text and types what you say. tabdeck puts its mascot in the header. Tap it to open the mull page:
+
+- **Rewrite.** Shows what's highlighted on the PC, live. Tap a preset (Fix, Shorten, Polite, Casual, Translate, plus your own `MULL_PRESET_*` presets) or type an instruction. The result appears on the tablet and is copied to the PC clipboard. *Type it* types the result into the focused window.
+- **Dictate.** Hold the button and talk. It runs `mull-dictate`, which types the words into the focused window.
+- **Backends.** Whether Groq, OpenRouter and the Claude CLI are set up. tabdeck only checks whether each key is set and never sends key values to the tablet.
+
+If mull isn't installed, the page shows how to install it, with a button that copies the steps to the PC clipboard. To hide the icon:
+
+```toml
+[integrations]
+mull = false
+```
+
+The tablet can't send arbitrary text to type or commands to run. It sends a preset name or an instruction, which the server passes to `mull` as an argument without a shell, and *Type it* only types the server's last result.
 
 ## Security
 

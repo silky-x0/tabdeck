@@ -189,6 +189,61 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 .page-add:active{background:var(--raised)}
 [hidden]{display:none!important}
 
+/* mull */
+body[data-view=mull] .deck-only,body:not([data-view=mull]) .mull-only,body[data-view=mull] #page,body[data-view=mull] #pageAdd{display:none!important}
+.mull-btn{width:36px;height:36px;padding:0;border:1px solid var(--line);border-radius:10px;background:var(--raised);
+  display:grid;place-items:center;transition:border-color .15s var(--ease),transform .12s var(--ease)}
+.mull-btn img{width:26px;height:26px;object-fit:contain}
+.mull-btn:active{transform:scale(.96)}
+.mull-btn[aria-pressed=true]{border-color:var(--accent)}
+.mullpage{grid-column:1/-1;grid-row:2/4;display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:12px;min-height:0}
+.mull-card{display:flex;flex-direction:column;gap:16px;min-height:0}
+.mull-head{display:flex;align-items:center;gap:12px}
+.mull-head img{width:48px;height:48px;object-fit:contain;flex:none}
+.mull-card h2,.mull-head h2{font-size:16px;line-height:24px;font-weight:500}
+.mull-head .grow{flex:1}
+.sel{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:10px;background:var(--deep);border:1px solid var(--line)}
+.sel-text{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;line-height:20px;min-height:20px}
+.sel-text.empty{color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{height:40px;padding:0 16px;border:1px solid var(--line);border-radius:10px;background:var(--raised);color:var(--text);font:inherit;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);transition:background-color .15s var(--ease),transform .12s var(--ease)}
+.chip:active{transform:scale(.97);background:#2a2a2d}
+.chip:disabled,.instr button:disabled{opacity:.5}
+.instr{display:flex;gap:8px}
+.instr input{flex:1;min-width:0;height:44px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--raised);
+  color:var(--text);font:inherit;caret-color:var(--accent)}
+.instr input::placeholder{color:var(--muted)}
+.instr input:focus{outline:none;border-color:var(--accent)}
+.result{display:flex;flex-direction:column;gap:8px;min-height:0;flex:1}
+.result-head{display:flex;align-items:center;justify-content:space-between}
+.result-text{flex:1;min-height:0;overflow-y:auto;line-height:20px;padding:12px;border-radius:10px;background:var(--deep);
+  border:1px solid var(--line);user-select:text;white-space:pre-wrap}
+.mull-error{color:var(--bad);font-size:13px;min-height:20px;margin-top:auto}
+.mull-side{display:flex;flex-direction:column;gap:12px;min-height:0}
+.dictate{flex:1;align-items:center;text-align:center;justify-content:center}
+.dictate img{width:120px;height:auto}
+.dictate .meta{max-width:30ch;margin-top:-8px}
+.talk{width:100%;height:72px;border:1px solid var(--line);border-radius:12px;background:var(--raised);color:var(--text);font:inherit;
+  font-weight:500;touch-action:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 -3px 0 rgba(0,0,0,.35);
+  transition:background-color .15s var(--ease),border-color .15s var(--ease),transform .12s var(--ease)}
+.talk.listening{background:#3a2a1f;border-color:var(--accent);transform:translateY(1px)}
+.talk:disabled{opacity:.5}
+.backends{list-style:none;padding:0;display:flex;flex-direction:column;gap:8px}
+.backends li{display:flex;align-items:center;gap:10px}
+.backends .dot{background:var(--muted)}
+.backends li.on .dot{background:var(--good)}
+.backends li:not(.on){color:var(--muted)}
+.mull-install{grid-column:1/-1;grid-row:2/4;display:flex;justify-content:center;overflow-y:auto}
+.install{width:min(640px,100%);display:flex;flex-direction:column;gap:16px;padding:8px 0}
+.install img{width:88px;height:auto}
+.install h2{font-size:20px;line-height:28px;font-weight:500}
+.install ol{padding-left:20px;display:flex;flex-direction:column;gap:8px;color:var(--text-2)}
+.install pre{margin:0;padding:12px;border-radius:10px;background:var(--deep);border:1px solid var(--line);overflow-x:auto;
+  font:400 13px/20px var(--mono);color:var(--text);user-select:text}
+.install .row-actions{display:flex;gap:8px;flex-wrap:wrap}
+.install a{color:var(--accent);text-underline-offset:3px}
+
 @media (max-aspect-ratio:1/1){
   body{overflow:auto}
   .grid{height:auto;grid-template-columns:1fr;grid-template-rows:auto}
@@ -222,13 +277,14 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
   <header>
     <div class="host"><b id="host">—</b><span class="meta" id="uptime"></span><span class="meta page" id="page"></span><button type="button" class="page-add" id="pageAdd" hidden></button></div>
     <div class="clock">
+      <button type="button" class="mull-btn" id="mullBtn" aria-label="mull" aria-pressed="false" hidden><img src="mull/mascot.png" alt=""></button>
       <div class="link" id="link"><span class="dot"></span><span class="meta" id="linkText">Linked</span></div>
       <span class="meta" id="date"></span>
       <span class="time num" id="time"></span>
     </div>
   </header>
 
-  <div class="col">
+  <div class="col deck-only">
   <section class="card cpu">
     <div class="cpu-head">
       <span class="label">Processor <span class="meta">· last 2 minutes</span></span>
@@ -257,7 +313,7 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
 
   </div>
 
-  <section class="card np idle" id="np">
+  <section class="card np idle deck-only" id="np">
     <div class="np-top">
       <div class="art" id="art"><span class="i" style="--src:url(icons/music.svg);width:32px;height:32px"></span></div>
       <div class="np-text">
@@ -284,11 +340,67 @@ header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-be
     </div>
   </section>
 
-  <section class="card keys" id="keys"></section>
+  <section class="card keys deck-only" id="keys"></section>
 
-  <section class="card wins">
+  <section class="card wins deck-only">
     <div class="wins-head"><span class="label">Windows</span><span class="meta num" id="winCount"></span></div>
     <div class="list" id="list"></div>
+  </section>
+
+  <section class="mullpage mull-only" id="mullReady" hidden>
+    <div class="card mull-card">
+      <div class="mull-head">
+        <img src="mull/mascot-rewrite.png" alt="">
+        <div class="grow"><h2>Rewrite</h2><p class="meta">Highlight text on the PC, then choose how to rewrite it</p></div>
+        <button type="button" class="tbtn quiet" data-back>Back to deck</button>
+      </div>
+      <div class="sel"><span class="label">Highlighted on the PC</span><p class="sel-text empty" id="mullSel">Nothing highlighted</p></div>
+      <div class="chips" id="mullPresets"></div>
+      <form class="instr" id="mullForm">
+        <input id="mullInstr" maxlength="300" autocomplete="off" placeholder="Or describe the change, like make it sound less angry">
+        <button type="submit" class="tbtn primary" id="mullGo">Rewrite</button>
+      </form>
+      <div class="result" id="mullResult" hidden>
+        <div class="result-head"><span class="label">Result, copied to the PC clipboard</span><button type="button" class="tbtn quiet" id="mullType">Type it</button></div>
+        <p class="result-text" id="mullOut"></p>
+      </div>
+      <p class="mull-error" id="mullError" role="alert"></p>
+    </div>
+    <div class="mull-side">
+      <div class="card mull-card dictate">
+        <img src="mull/mascot-dictate.png" alt="">
+        <h2>Dictate</h2>
+        <p class="meta">Hold to talk. mull types the words into the focused window on the PC</p>
+        <button type="button" class="talk" id="talk">Hold to talk</button>
+      </div>
+      <div class="card mull-card">
+        <span class="label">Backends</span>
+        <ul class="backends" id="mullBackends"></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="card mull-install mull-only" id="mullMissing" hidden>
+    <div class="install">
+      <img src="mull/mascot.png" alt="">
+      <h2>mull isn't installed on this PC</h2>
+      <p>mull rewrites highlighted text and types what you say, using your own AI key. Install it on the PC to use this page.</p>
+      <ol>
+        <li>Install mull and its dependencies (Arch shown; other distros are in the mull README):
+<pre id="mullSteps">sudo pacman -S go wl-clipboard libnotify rofi pipewire wtype
+git clone https://github.com/silky-x0/mull ~/mull && cd ~/mull
+go build -o ~/.local/bin/mull ./cmd/mull
+ln -s "$PWD"/scripts/mull-* ~/.local/bin/
+mkdir -p ~/.config/mull && cp .env.example ~/.config/mull/.env</pre></li>
+        <li>Add a free Groq key from console.groq.com/keys after <code>GROQ_API_KEY=</code> in <code>~/.config/mull/.env</code>.</li>
+      </ol>
+      <div class="row-actions">
+        <button type="button" class="tbtn primary" id="mullCopy">Copy steps to the PC clipboard</button>
+        <button type="button" class="tbtn" id="mullCheck">Check again</button>
+        <button type="button" class="tbtn" data-back>Back to deck</button>
+      </div>
+      <p class="meta">More: <a href="https://github.com/silky-x0/mull" target="_blank" rel="noopener">github.com/silky-x0/mull</a></p>
+    </div>
   </section>
 </div>
 
@@ -604,6 +716,99 @@ document.addEventListener("pointerup", () => {
   if (!document.fullscreenElement && !matchMedia("(display-mode: fullscreen)").matches)
     document.documentElement.requestFullscreen?.().catch(() => {});
 }, {once: true});
+
+// mull: a separate page for rewriting highlighted text and dictation, or an install prompt.
+let mull = null, view = "deck";
+async function loadMull() {
+  mull = await fetch("/api/mull").then(r => r.ok ? r.json() : null).catch(() => null);
+  $("mullBtn").hidden = !mull?.enabled;
+  if (!mull?.enabled) { if (view === "mull") setView("deck"); return; }
+  $("mullReady").hidden = !mull.installed;
+  $("mullMissing").hidden = !!mull.installed;
+  if (!mull.installed) return;
+  $("mullPresets").replaceChildren(...mull.presets.map(p => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.dataset.preset = p;
+    b.textContent = p[0].toUpperCase() + p.slice(1).replace(/-/g, " ");
+    return b;
+  }));
+  const names = {groq: "Groq", openrouter: "OpenRouter", claude: "Claude CLI"};
+  $("mullBackends").replaceChildren(...Object.entries(mull.backends).map(([k, on]) => {
+    const li = document.createElement("li");
+    li.className = on ? "on" : "";
+    li.innerHTML = `<span class="dot"></span><span></span>`;
+    li.lastChild.textContent = `${names[k]} ${on ? "ready" : k === "claude" ? "not installed" : "key not set"}`;
+    return li;
+  }));
+  $("talk").disabled = !mull.dictate;
+  $("talk").textContent = mull.dictate ? "Hold to talk" : "Dictation needs mull-dictate, pw-record and wtype";
+  $("mullType").hidden = !mull.canType;
+}
+function setView(v) {
+  view = v;
+  document.body.dataset.view = v;
+  $("mullBtn").setAttribute("aria-pressed", v === "mull");
+  history.replaceState(null, "", v === "mull" ? "#mull" : location.pathname);
+  if (v === "mull") { loadMull().then(pollSelection); }
+}
+async function pollSelection() {
+  if (view !== "mull" || !mull?.installed) return;
+  const r = await fetch("/api/mull/selection").catch(() => null);
+  if (!r?.ok) return;
+  const {text} = await r.json();
+  $("mullSel").textContent = text || "Nothing highlighted";
+  $("mullSel").classList.toggle("empty", !text);
+}
+async function mullPost(action, body) {
+  const opts = {method: "POST"};
+  if (body) Object.assign(opts, {headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  return fetch(`/mull/${action}`, opts).catch(() => null);
+}
+async function rewrite(body) {
+  const busy = [...document.querySelectorAll(".chip"), $("mullGo")];
+  busy.forEach(b => b.disabled = true);
+  $("mullGo").textContent = "Rewriting…";
+  $("mullError").textContent = "";
+  const r = await mullPost("rewrite", body);
+  busy.forEach(b => b.disabled = false);
+  $("mullGo").textContent = "Rewrite";
+  if (!r) return $("mullError").textContent = "Can't reach the PC";
+  if (!r.ok) return $("mullError").textContent = await r.text();
+  const {after} = await r.json();
+  $("mullOut").textContent = after;
+  $("mullResult").hidden = false;
+}
+$("mullBtn").addEventListener("click", () => setView(view === "mull" ? "deck" : "mull"));
+document.querySelectorAll("[data-back]").forEach(b => b.addEventListener("click", () => setView("deck")));
+$("mullPresets").addEventListener("click", e => { const b = e.target.closest("[data-preset]"); if (b) rewrite({preset: b.dataset.preset}); });
+$("mullForm").addEventListener("submit", e => { e.preventDefault(); const t = $("mullInstr").value.trim(); if (t) rewrite({instruction: t}); });
+$("mullType").addEventListener("click", () => mullPost("type"));
+$("mullCheck").addEventListener("click", loadMull);
+$("mullCopy").addEventListener("click", async () => {
+  const r = await mullPost("copy-install");
+  $("mullCopy").textContent = r?.ok ? "Copied, paste it in a terminal on the PC" : "Couldn't copy";
+});
+let talking = false;
+$("talk").addEventListener("pointerdown", e => {
+  if ($("talk").disabled) return;
+  talking = true;
+  $("talk").setPointerCapture?.(e.pointerId);
+  $("talk").classList.add("listening");
+  $("talk").textContent = "Listening… release to type";
+  mullPost("dictate-start");
+});
+const stopTalk = () => {
+  if (!talking) return;
+  talking = false;
+  $("talk").classList.remove("listening");
+  $("talk").textContent = "Transcribing…";
+  mullPost("dictate-stop");
+  setTimeout(() => { if (!talking) $("talk").textContent = "Hold to talk"; }, 2500);
+};
+["pointerup", "pointercancel"].forEach(t => $("talk").addEventListener(t, stopTalk));
+$("talk").addEventListener("contextmenu", e => e.preventDefault());
+setInterval(pollSelection, 1500);
+loadMull().then(() => { if (location.hash === "#mull" && mull?.enabled) setView("mull"); });
 
 tick(); setInterval(tick, 1000);
 loadKeys().then(pollAll); setInterval(pollAll, 1500);

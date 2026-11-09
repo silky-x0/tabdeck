@@ -10,3 +10,7 @@ Geist and Geist Mono fonts (static/fonts/*.woff2)
   https://github.com/vercel/geist-font
   SIL Open Font License 1.1, Copyright (c) 2023 Vercel, in collaboration with
   basement.studio
+
+mull mascot (static/mull/*.png)
+  https://github.com/silky-x0/mull
+  By the same author as tabdeck, used with permission.

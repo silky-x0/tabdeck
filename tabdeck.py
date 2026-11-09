@@ -516,6 +516,78 @@ def windows():
     return {"windows": wins, "workspaces": [m["activeWorkspace"]["id"] for m in monitors], "activeClass": active_class}
 
 
+# --- mull (https://github.com/silky-x0/mull): rewrite and dictation ---
+
+MULL_PRESET = re.compile(r"[a-z0-9-]{1,32}")
+MULL_INSTALL = """sudo pacman -S go wl-clipboard libnotify rofi pipewire wtype
+git clone https://github.com/silky-x0/mull ~/mull && cd ~/mull
+go build -o ~/.local/bin/mull ./cmd/mull
+ln -s "$PWD"/scripts/mull-* ~/.local/bin/
+mkdir -p ~/.config/mull && cp .env.example ~/.config/mull/.env
+"""
+mull_state = {"result": "", "busy": False}
+mull_lock = threading.Lock()
+
+
+def mull_status():
+    if not CFG.get("integrations", {}).get("mull", True):
+        return {"enabled": False}
+    if not shutil.which("mull"):
+        return {"enabled": True, "installed": False}
+    env = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "mull" / ".env"
+    # Only whether a key is set is reported; key values never leave this process.
+    keys = {}
+    for line in read(env).splitlines():
+        name, _, value = line.partition("=")
+        keys[name.strip()] = bool(value.strip().strip("\"'"))
+    presets = [p.strip() for p in run(["mull", "presets"], timeout=5).splitlines() if MULL_PRESET.fullmatch(p.strip())]
+    return {
+        "enabled": True, "installed": True, "presets": presets,
+        "backends": {"groq": keys.get("GROQ_API_KEY", False), "openrouter": keys.get("OPENROUTER_API_KEY", False),
+                     "claude": bool(shutil.which("claude"))},
+        "dictate": all(shutil.which(c) for c in ("mull-dictate", "pw-record", "wtype")),
+        "canType": bool(shutil.which("wtype")),
+    }
+
+
+def mull_selection():
+    return run(["wl-paste", "--primary", "--no-newline"], timeout=2)[:4000]
+
+
+def mull_rewrite(data):
+    """Rewrites the PC's highlighted text with a preset or an instruction from the tablet."""
+    if not shutil.which("mull"):
+        raise EditError("mull isn't installed")
+    preset, instruction = str(data.get("preset") or ""), str(data.get("instruction") or "").strip()
+    if preset:
+        if preset not in mull_status().get("presets", []):
+            raise EditError("Unknown preset")
+        args = [preset]
+    elif 1 <= len(instruction) <= 300:
+        args = [instruction]
+    else:
+        raise EditError("Pick a preset or write an instruction of up to 300 characters")
+    before = mull_selection()
+    if not before:
+        raise EditError("Nothing is highlighted on the PC")
+    with mull_lock:
+        if mull_state["busy"]:
+            raise EditError("A rewrite is already running")
+        mull_state["busy"] = True
+    try:
+        r = subprocess.run(["mull", "rewrite", *args], input=before, capture_output=True, text=True, timeout=75)
+    except subprocess.TimeoutExpired:
+        raise EditError("mull took too long")
+    finally:
+        mull_state["busy"] = False
+    if r.returncode != 0 or not r.stdout.strip():
+        raise EditError((r.stderr or "mull failed").strip().splitlines()[-1][:200])
+    after = r.stdout.strip()
+    mull_state["result"] = after
+    subprocess.run(["wl-copy"], input=after, text=True, timeout=5)
+    return {"before": before, "after": after}
+
+
 # --- virtual display setup, used by the tablet script ---
 
 def tablet_resolution():
@@ -607,6 +679,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(windows())
         if path == "/api/keys":
             return self._json(KEYS)
+        if path == "/api/mull":
+            return self._json(mull_status())
+        if path == "/api/mull/selection":
+            return self._json({"text": mull_selection() if shutil.which("wl-paste") else ""})
         if path == "/api/art":
             p = art_path()
             if p and p.is_file():
@@ -625,6 +701,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(401)
         path = urlsplit(self.path).path
         verb, _, arg = path.strip("/").partition("/")
+        if verb == "mull":
+            return self._mull(arg)
         if verb in ("keys", "pages"):
             try:
                 length = int(self.headers.get("Content-Length", 0))
@@ -651,6 +729,32 @@ class Handler(BaseHTTPRequestHandler):
         try:
             subprocess.Popen(cmd, start_new_session=True,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as e:
+            return self._send(500, str(e).encode())
+        self._send(204)
+
+    def _mull(self, action):
+        if action == "rewrite":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                if self.headers.get("Content-Type") != "application/json" or not 0 < length <= 4096:
+                    raise EditError("Expected a small JSON body")
+                return self._json(mull_rewrite(json.loads(self.rfile.read(length))))
+            except EditError as e:
+                return self._send(400, str(e).encode())
+            except (ValueError, AttributeError):
+                return self._send(400, b"Invalid request")
+        if action == "copy-install":
+            r = subprocess.run(["wl-copy"], input=MULL_INSTALL, text=True, timeout=5) if shutil.which("wl-copy") else None
+            return self._send(204 if r and r.returncode == 0 else 500)
+        # Typing sends only the server's last rewrite result, never text from the tablet.
+        cmds = {"type": ["wtype", "--", mull_state["result"]] if mull_state["result"] else None,
+                "dictate-start": ["mull-dictate", "start"], "dictate-stop": ["mull-dictate", "stop"]}
+        cmd = cmds.get(action)
+        if not cmd or not shutil.which(cmd[0]):
+            return self._send(404)
+        try:
+            subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError as e:
             return self._send(500, str(e).encode())
         self._send(204)

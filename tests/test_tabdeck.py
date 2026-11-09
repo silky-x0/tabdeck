@@ -8,6 +8,7 @@ import threading
 import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_HOME = tempfile.TemporaryDirectory()
@@ -195,6 +196,37 @@ class Editing(StateMixin, unittest.TestCase):
         with self.assertRaises(tabdeck.EditError):
             tabdeck.edit_key("k0", "explode", {})
         self.assertFalse(self.user_cfg.exists())
+
+
+class Mull(StateMixin, unittest.TestCase):
+    def fake_which(self, name):
+        return f"/usr/bin/{name}"
+
+    def test_status_never_contains_key_values(self):
+        env = Path(CONFIG_HOME.name) / "mull" / ".env"
+        env.parent.mkdir(parents=True, exist_ok=True)
+        env.write_text('GROQ_API_KEY=gsk_supersecretvalue123\nOPENROUTER_API_KEY=""\n')
+        with mock.patch.object(tabdeck.shutil, "which", self.fake_which), \
+                mock.patch.object(tabdeck, "run", return_value="fix\nshorten\nbad preset!"):
+            status = tabdeck.mull_status()
+        self.assertNotIn("gsk_supersecretvalue123", json.dumps(status))
+        self.assertEqual(status["backends"], {"groq": True, "openrouter": False, "claude": True})
+        self.assertEqual(status["presets"], ["fix", "shorten"])
+
+    def test_not_installed(self):
+        with mock.patch.object(tabdeck.shutil, "which", return_value=None):
+            self.assertEqual(tabdeck.mull_status(), {"enabled": True, "installed": False})
+
+    def test_disabled_in_config(self):
+        tabdeck.CFG = {**tabdeck.CFG, "integrations": {"mull": False}}
+        self.assertEqual(tabdeck.mull_status(), {"enabled": False})
+
+    def test_rewrite_validates_input(self):
+        with mock.patch.object(tabdeck.shutil, "which", self.fake_which), \
+                mock.patch.object(tabdeck, "run", return_value="fix"):
+            for bad in [{}, {"preset": "rm -rf"}, {"preset": "nope"}, {"instruction": "x" * 301}, {"instruction": "  "}]:
+                with self.assertRaises(tabdeck.EditError, msg=bad):
+                    tabdeck.mull_rewrite(bad)
 
 
 class Http(StateMixin, unittest.TestCase):
